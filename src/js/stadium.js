@@ -537,10 +537,10 @@ function buildToday() {
 }
 
 // ------------------------------------------------------------------ the winning scheme (VG13 Architects)
-// Dimensions read off the competition boards (floor plans, long section, roof-level site plan):
-// long stands run 116 m, the stands behind the goals are 134 m wide and reach into the corners,
-// the long roofs cover ±68 m along the pitch and the end roofs ±57 m across it. Where the
-// two sets of roofs stop short of each other, each corner stays open from the ground to the sky.
+// Dimensions read off the competition boards (floor plans, long section, roof-level site plan) and
+// the aerial render: the seating runs round each corner, the lower tiers meeting on a diagonal from
+// the corner flag, the long roofs cover ±68 m along the pitch and the end roofs ±57 m across it.
+// Where the two sets of roofs stop short of each other, each corner stays open to the sky.
 const LOOK_FUTURE = { seat: '#e6e6e1', back: '#c7c8c3', shade: '#efefeb', aisle: '#b5b6b1' };
 
 function panelTexture() {
@@ -579,17 +579,19 @@ function buildFuture() {
   const roofMat = new THREE.MeshStandardMaterial({ map: panelTexture(), color: '#e4e8ea', roughness: 0.34, metalness: 0.7, side: THREE.DoubleSide });
   const facadeMat = new THREE.MeshStandardMaterial({ map: meshTexture(), color: '#ffffff', roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide });
 
-  // Long stands: lower tier, hospitality boxes, upper tier over a podium, 116 m long.
+  // Long stands: lower tier, hospitality boxes, upper tier over a podium. The lower tier meets the
+  // stand behind the goal on a diagonal from the corner flag, the upper tier runs to the end of the facade.
   for (const s of [-1, 1]) {
     const name = s < 0 ? 'zapad' : 'istok';
-    st.stand({ name, inner: [[42 * s, -58], [42 * s, 58]], outer: [[61 * s, -58], [61 * s, 58]], occupied: true,
+    st.stand({ name, inner: [[42 * s, -60], [42 * s, 60]], outer: [[61 * s, -79], [61 * s, 79]], occupied: true,
       tiers: [{ f0: 0, f1: 1, rows: 22, y0: 1.1, y1: 10.1 }],
-      look: { ...LOOK_FUTURE, vomitories: [14, 40, 66, 92].map((at) => ({ at, row: 8, rows: 3 })) } });
-    st.box(61 * s, 65 * s, 10.1, 14.2, -58, 58, M.glassWarm);
-    st.box(65 * s, 86 * s, 0, 13.6, -58, 58, M.concrete);
-    st.stand({ name, inner: [[59.5 * s, -58], [59.5 * s, 58]], outer: [[80 * s, -58], [80 * s, 58]], occupied: true,
+      look: { ...LOOK_FUTURE, vomitories: [16, 43, 69.5, 96, 123].map((at) => ({ at, row: 8, rows: 3 })) } });
+    st.box(61 * s, 65 * s, 10.1, 14.2, -66, 66, M.glassWarm);
+    st.box(65 * s, 86 * s, 0, 13.6, -62, 62, M.concrete);
+    for (const z of [-1, 1]) st.box(65 * s, 86 * s, 0, 13.6, 62 * z, 66 * z, M.glass);
+    st.stand({ name, inner: [[59.5 * s, -66], [59.5 * s, 66]], outer: [[80 * s, -66], [80 * s, 66]], occupied: true,
       tiers: [{ f0: 0, f1: 1, rows: 24, y0: 15.0, y1: 28.0, base0: 13.6, base1: 13.6 }],
-      look: { ...LOOK_FUTURE, vomitories: [27, 53, 79].map((at) => ({ at, row: 2, rows: 3 })) },
+      look: { ...LOOK_FUTURE, vomitories: [14, 40, 66, 92, 118].map((at) => ({ at, row: 2, rows: 3 })) },
       label: s < 0 ? 'Zapad' : 'Istok', labelAt: [70 * s, 44, 0] });
     // Long roof: high edge over the pitch, dipping outward onto the facade, ±68 m long.
     st.slab(s < 0
@@ -597,24 +599,30 @@ function buildFuture() {
       : [[39 * s, 37, 68], [39 * s, 37, -68], [91 * s, 30, -68], [91 * s, 30, 68]], 1.6, roofMat);
     facadePanel(st, [88.5 * s, 0, -66], [88.5 * s, 0, 66], [90.5 * s, 30.3, 66], [90.5 * s, 30.3, -66], facadeMat);
   }
-  // Stands behind the goals: 134 m wide, so their outer ends sit in the open corners.
+  // Stands behind the goals: 84 m wide at the front and 144 m at the back, so their rows run on
+  // under the open corners and end in steps along the diagonal.
   for (const s of [-1, 1]) {
     const name = s < 0 ? 'sjever' : 'jug';
-    st.stand({ name, inner: [[-67, 60 * s], [67, 60 * s]], outer: [[-67, 90 * s], [67, 90 * s]], occupied: true, block: 24,
+    st.stand({ name, inner: [[-42, 60 * s], [42, 60 * s]], outer: [[-72, 90 * s], [72, 90 * s]], occupied: true, block: 24,
       tiers: [{ f0: 0, f1: 1, rows: 36, y0: 1.0, y1: 16.4 }],
-      look: { ...LOOK_FUTURE, vomitories: [15, 41, 67, 93, 119].map((at) => ({ at, row: 12, rows: 3 })) },
+      look: { ...LOOK_FUTURE, vomitories: [13, 35, 57, 79, 101].map((at) => ({ at, row: 12, rows: 3 })) },
       label: s < 0 ? 'Sjever' : 'Jug', labelAt: [0, 36, 78 * s] });
     st.slab(s < 0
       ? [[-57, 31.6, 56 * s], [57, 31.6, 56 * s], [57, 17, 100 * s], [-57, 17, 100 * s]]
       : [[57, 31.6, 56 * s], [-57, 31.6, 56 * s], [-57, 17, 100 * s], [57, 17, 100 * s]], 1.6, roofMat);
-    facadePanel(st, [-57, 0, 93 * s], [57, 0, 93 * s], [57, 17.3, 99 * s], [-57, 17.3, 99 * s], facadeMat);
+    facadePanel(st, [-78, 0, 93 * s], [78, 0, 93 * s], [78, 17.3, 99 * s], [-78, 17.3, 99 * s], facadeMat);
     st.box(-57, 57, 0, 16.4, 90 * s, 93 * s, M.concrete);
   }
-  // The corners: a folded entrance canopy on three columns, and nothing above it.
+  // The corners, open to the sky between the roofs. Below the gap, a flat terrace on three columns
+  // runs on from the end of each long stand, and the rake behind the goal carries on past its last
+  // seats as a white wing that ends in a point. People walk underneath both.
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    st.slab([[64 * sx, 12.5, 76 * sz], [86 * sx, 11, 76 * sz], [86 * sx, 9.5, 97 * sz], [62 * sx, 11.5, 97 * sz]].map(([x, y, z]) => [x, y, z]),
-      0.8, M.steel, { roof: false, edges: false, tunnel: false });
-    for (const [x, z] of [[70, 92], [80, 92], [80, 80]]) st.box(x * sx - 0.4, x * sx + 0.4, 0, 10.5, z * sz - 0.4, z * sz + 0.4, M.white, { occ: false, solid: 0 });
+    const P = (pts) => pts.map(([x, y, z]) => [x * sx, y, z * sz]);
+    // Mirroring one axis flips the winding; reorder so the top faces keep facing up.
+    const up = (pts) => (sx * sz > 0 ? pts : [pts[0], pts[3], pts[2], pts[1]]);
+    st.slab(up(P([[74, 14.4, 66], [74, 14.4, 82], [90, 14.4, 82], [90, 14.4, 66]])), 1.1, M.white, { roof: false, tunnel: false });
+    for (const [x, z] of [[78, 80], [87, 80], [78, 72]]) st.box(x * sx - 0.45, x * sx + 0.45, 0, 13.3, z * sz - 0.45, z * sz + 0.45, M.white, { occ: false, solid: 0 });
+    st.slab(up(P([[61, 10.9, 79], [75, 18.1, 93], [96, 18.1, 93], [69, 10.9, 79]])), 1.2, M.white, { roof: false, tunnel: false });
     st.label('otvor', [78 * sx, 30, 82 * sz], 'hole');
   }
   st.probes = [[-78, -80], [78, -80], [-78, 80], [78, 80]];
