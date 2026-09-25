@@ -31,7 +31,8 @@ class Occluders {
 }
 
 // ------------------------------------------------------------------ solids
-// Convex hexahedra in stadium-local coordinates. The wind tunnel and the rain mask voxelise them.
+// Convex hexahedra in stadium-local coordinates. The wind tunnel and the rain mask voxelise them
+// (today's stadium; the new one comes as a triangle mesh, see VoxelModel).
 // `s` is the solid fraction: 1 for concrete, less for perforated metal or open colonnades.
 // Vertices 0-3 and 4-7 are opposite faces, with vertex k joined to k + 4.
 const HEXA_FACES = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]];
@@ -66,21 +67,9 @@ class SolidSet {
     const V = (x, y, z) => new THREE.Vector3(x, y, z);
     this.hexa([V(a, y0, c), V(b, y0, c), V(b, y1, c), V(a, y1, c), V(a, y0, d), V(b, y0, d), V(b, y1, d), V(a, y1, d)], s);
   }
-  // Thin elements get at least `minThick` so no voxel ray slips through a roof or a facade.
-  slab(top, t, s = 1, rainOnly = false) { this.list.push({ top: top.map((p) => p.clone()), t, s, kind: 'slab', rainOnly }); }
-  panel(quad, t, s) { this.list.push({ quad: quad.map((p) => p.clone()), t, s, kind: 'panel' }); }
-  // For the tunnel, small canopies are left out: inflated to a voxel they would wall off the corners.
-  resolve(minThick, tunnel = false) {
-    return this.list.filter((o) => !(tunnel && o.rainOnly)).map((o) => {
-      let pts = o.pts;
-      if (o.kind === 'slab') {
-        const t = Math.max(o.t, minThick);
-        pts = [...o.top, ...o.top.map((p) => p.clone().add(new THREE.Vector3(0, -t, 0)))];
-      } else if (o.kind === 'panel') {
-        const q = o.quad, t = Math.max(o.t, minThick) / 2;
-        const n = new THREE.Vector3().subVectors(q[1], q[0]).cross(new THREE.Vector3().subVectors(q[3], q[0])).normalize();
-        pts = [...q.map((p) => p.clone().addScaledVector(n, t)), ...q.map((p) => p.clone().addScaledVector(n, -t))];
-      }
+  resolve() {
+    return this.list.map((o) => {
+      const pts = o.pts;
       const min = pts.reduce((a, p) => a.min(p), new THREE.Vector3(Infinity, Infinity, Infinity));
       const max = pts.reduce((a, p) => a.max(p), new THREE.Vector3(-Infinity, -Infinity, -Infinity));
       return { planes: convexPlanes(pts), min, max, s: o.s };
@@ -90,6 +79,134 @@ class SolidSet {
 
 function insideSolid(planes, x, y, z) {
   for (let k = 0; k < planes.length; k += 4) if (planes[k] * x + planes[k + 1] * y + planes[k + 2] * z - planes[k + 3] > 1e-6) return false;
+  return true;
+}
+
+// ------------------------------------------------------------------ voxels
+// The new stadium comes as a triangle mesh, so the simulation sees it as 1 m voxels in the stadium's
+// frame. Every voxel a surface touches takes that surface's solid fraction, and under the rows of seats
+// the stands are filled down to the ground, as today's stands are solid wedges. A flood fill from the
+// open sides and the sky then marks the air; whatever it cannot reach is solid too. Surfaces on a solid
+// block are its faces, the rest are thin: roof plates, facade skins, the corner terraces. A coarse grid
+// samples the blocks at its cell centres but thickens thin surfaces to a whole cell, so no drop or gust
+// slips through a roof between two cell centres.
+class VoxelModel {
+  constructor({ x0, x1, z0, z1, top }, h = 1) {
+    Object.assign(this, { x0, z0, h, nx: Math.ceil((x1 - x0) / h), ny: Math.ceil(top / h), nz: Math.ceil((z1 - z0) / h) });
+    const n = this.nx * this.ny * this.nz;
+    this.surf = new Uint8Array(n);
+    this.block = new Uint8Array(n);
+  }
+
+  // Conservative: every voxel the triangle touches (the triangle-box overlap test of Akenine-Möller).
+  surface(pos, index, value) {
+    const { x0, z0, h, nx, ny, nz, surf } = this, r = h / 2 + 1e-4;
+    const v = new Float64Array(9), e = new Float64Array(9);
+    for (let t = 0; t < index.length; t += 3) {
+      for (let k = 0; k < 3; k++) {
+        const p = index[t + k] * 3;
+        v[k * 3] = pos[p] - x0; v[k * 3 + 1] = pos[p + 1]; v[k * 3 + 2] = pos[p + 2] - z0;
+      }
+      for (let k = 0; k < 3; k++) for (let a = 0; a < 3; a++) e[k * 3 + a] = v[((k + 1) % 3) * 3 + a] - v[k * 3 + a];
+      const nX = e[1] * e[5] - e[2] * e[4], nY = e[2] * e[3] - e[0] * e[5], nZ = e[0] * e[4] - e[1] * e[3];
+      const d = nX * v[0] + nY * v[1] + nZ * v[2], rn = r * (Math.abs(nX) + Math.abs(nY) + Math.abs(nZ));
+      const lo = (a) => Math.floor(Math.min(v[a], v[3 + a], v[6 + a]) / h), hi = (a) => Math.floor(Math.max(v[a], v[3 + a], v[6 + a]) / h);
+      const i1 = Math.min(nx - 1, hi(0)), k1 = Math.min(ny - 1, hi(1)), j1 = Math.min(nz - 1, hi(2));
+      for (let k = Math.max(0, lo(1)); k <= k1; k++) for (let j = Math.max(0, lo(2)); j <= j1; j++) for (let i = Math.max(0, lo(0)); i <= i1; i++) {
+        const cx = (i + 0.5) * h, cy = (k + 0.5) * h, cz = (j + 0.5) * h;
+        if (Math.abs(nX * cx + nY * cy + nZ * cz - d) > rn || !edgeAxesOverlap(v, e, cx, cy, cz, r)) continue;
+        const q = (k * nz + j) * nx + i;
+        if (surf[q] < value) surf[q] = value;
+      }
+    }
+  }
+
+  // Solid from the ground up to `y` under a rectangle given in (along, depth) coordinates, where depth
+  // runs along the unit vector (fx, fz) and along across it, along (-fz, fx).
+  fillBelow(fx, fz, a0, a1, d0, d1, y) {
+    const { x0, z0, h, nx, ny, nz, block } = this;
+    const xs = [], zs = [];
+    for (const a of [a0, a1]) for (const d of [d0, d1]) { xs.push(-fz * a + fx * d); zs.push(fx * a + fz * d); }
+    const top = Math.min(ny, Math.round(y / h));
+    const i1 = Math.min(nx - 1, Math.floor((Math.max(...xs) - x0) / h)), j1 = Math.min(nz - 1, Math.floor((Math.max(...zs) - z0) / h));
+    for (let j = Math.max(0, Math.floor((Math.min(...zs) - z0) / h)); j <= j1; j++) for (let i = Math.max(0, Math.floor((Math.min(...xs) - x0) / h)); i <= i1; i++) {
+      const x = x0 + (i + 0.5) * h, z = z0 + (j + 0.5) * h, a = -fz * x + fx * z, d = fx * x + fz * z;
+      if (a < a0 || a > a1 || d < d0 || d > d1) continue;
+      for (let k = 0; k < top; k++) block[(k * nz + j) * nx + i] = 1;
+    }
+  }
+
+  close() {
+    const { nx, ny, nz, surf, block } = this, n = surf.length, layer = nx * nz;
+    const air = new Uint8Array(n), queue = new Int32Array(n);
+    let head = 0, tail = 0;
+    const visit = (q) => { if (!air[q] && !surf[q] && !block[q]) { air[q] = 1; queue[tail++] = q; } };
+    for (let k = 0; k < ny; k++) {
+      for (let j = 0; j < nz; j++) { visit((k * nz + j) * nx); visit((k * nz + j) * nx + nx - 1); }
+      for (let i = 0; i < nx; i++) { visit(k * layer + i); visit(k * layer + (nz - 1) * nx + i); }
+    }
+    for (let q = (ny - 1) * layer; q < n; q++) visit(q);
+    while (head < tail) {
+      const q = queue[head++], i = q % nx, j = Math.floor(q / nx) % nz, k = Math.floor(q / layer);
+      if (i > 0) visit(q - 1);
+      if (i < nx - 1) visit(q + 1);
+      if (j > 0) visit(q - nx);
+      if (j < nz - 1) visit(q + nx);
+      if (k > 0) visit(q - layer);
+      if (k < ny - 1) visit(q + layer);
+    }
+    const core = new Uint8Array(n);
+    for (let q = 0; q < n; q++) if (block[q] || (!air[q] && !surf[q])) core[q] = 1;
+    this.thick = new Uint8Array(n);
+    this.thin = new Uint8Array(n);
+    for (let q = 0; q < n; q++) {
+      if (core[q]) { this.thick[q] = 255; continue; }
+      if (!surf[q]) continue;
+      const i = q % nx, j = Math.floor(q / nx) % nz, k = Math.floor(q / layer);
+      const face = (i > 0 && core[q - 1]) || (i < nx - 1 && core[q + 1]) || (j > 0 && core[q - nx]) || (j < nz - 1 && core[q + nx])
+        || (k > 0 && core[q - layer]) || (k < ny - 1 && core[q + layer]);
+      if (face) this.thick[q] = surf[q]; else this.thin[q] = surf[q];
+    }
+    this.surf = this.block = null;
+    return this;
+  }
+
+  // Solid fraction (0-255) of a cube of side `size` centred on a local point.
+  cell(x, y, z, size) {
+    const { x0, z0, h, nx, ny, nz, thick, thin } = this;
+    const fi = (x - x0) / h, fk = y / h, fj = (z - z0) / h, r = size / 2 / h;
+    if (fi + r <= 0 || fj + r <= 0 || fk + r <= 0 || fi - r >= nx || fj - r >= nz || fk - r >= ny) return 0;
+    const ci = Math.floor(fi), cj = Math.floor(fj), ck = Math.floor(fk);
+    let best = ci >= 0 && cj >= 0 && ck >= 0 && ci < nx && cj < nz && ck < ny ? thick[(ck * nz + cj) * nx + ci] : 0;
+    const i0 = Math.max(0, Math.floor(fi - r)), i1 = Math.min(nx - 1, Math.ceil(fi + r) - 1);
+    const j0 = Math.max(0, Math.floor(fj - r)), j1 = Math.min(nz - 1, Math.ceil(fj + r) - 1);
+    const k0 = Math.max(0, Math.floor(fk - r)), k1 = Math.min(ny - 1, Math.ceil(fk + r) - 1);
+    for (let k = k0; k <= k1; k++) for (let j = j0; j <= j1; j++) {
+      const row = (k * nz + j) * nx;
+      for (let i = i0; i <= i1; i++) if (thin[row + i] > best) best = thin[row + i];
+    }
+    return best;
+  }
+}
+
+// The nine edge-cross-axis tests of the triangle-box overlap. v: vertices, e: edges, box at c with half-size r.
+function edgeAxesOverlap(v, e, cx, cy, cz, r) {
+  const c = [cx, cy, cz];
+  for (let k = 0; k < 3; k++) {
+    for (let a = 0; a < 3; a++) {
+      // axis = edge k x unit axis a
+      const b = (a + 1) % 3, d = (a + 2) % 3;
+      const eb = e[k * 3 + b], ed = e[k * 3 + d];
+      let mn = Infinity, mx = -Infinity;
+      for (let m = 0; m < 3; m++) {
+        const p = ed * (v[m * 3 + b] - c[b]) - eb * (v[m * 3 + d] - c[d]);
+        if (p < mn) mn = p;
+        if (p > mx) mx = p;
+      }
+      const rad = r * (Math.abs(eb) + Math.abs(ed));
+      if (mn > rad || mx < -rad) return false;
+    }
+  }
   return true;
 }
 
@@ -113,8 +230,9 @@ class Stadium {
     this.seats = [];
     this.occ = new Occluders();
     this.solids = new SolidSet();
+    this.voxels = null;       // a VoxelModel stands in for the solids of a stadium built from a mesh
+    this.rainBounds = null;   // local box of the 2 m rain mask: [x0, x1, z0, z1, top]
     this.roofMaterials = [];
-    this.roofEdges = [];
     this.labels = [];
     this.probes = [];   // points in the corner openings where the tunnel reports the air speed
   }
@@ -148,33 +266,6 @@ class Stadium {
       this.occ.box(new THREE.Vector3(b.x0, 0, b.z0), new THREE.Vector3(b.x1, h, b.z1), this.matrix);
       this.solids.box(b.x0, b.x1, 0, h, b.z0, b.z1, 1);
     }
-  }
-
-  // A slab between four corner points (local), with the top face recorded as an occluder.
-  slab(corners, thickness, mat, { rainPass = 0, windPass = 0, roof = true, edges = true, tunnel = true } = {}) {
-    const top = corners.map(([x, y, z]) => new THREE.Vector3(x, y, z));
-    const bot = top.map((p) => p.clone().add(new THREE.Vector3(0, -thickness, 0)));
-    const pos = [];
-    const quad = (a, b, c, d) => { for (const p of [a, b, c, a, c, d]) pos.push(p.x, p.y, p.z); };
-    quad(top[0], top[1], top[2], top[3]);
-    quad(bot[3], bot[2], bot[1], bot[0]);
-    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; quad(bot[i], bot[j], top[j], top[i]); }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    const uv = [];
-    for (let i = 0; i < pos.length; i += 3) uv.push(pos[i] / 12, pos[i + 2] / 12);
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    g.computeVertexNormals();
-    const m = this.mesh(g, mat);
-    if (edges) {
-      const e = new THREE.LineSegments(new THREE.EdgesGeometry(g, 20), EDGE);
-      this.body.add(e);
-      if (roof) this.roofEdges.push(e);
-    }
-    if (roof) this.roofMaterials.push(mat);
-    this.occ.poly(top.map((p) => p.clone().applyMatrix4(this.matrix)), rainPass, windPass);
-    this.solids.slab(top, thickness, 1, !tunnel);
-    return m;
   }
 
   /*
@@ -318,7 +409,7 @@ class Stadium {
     this.headsLocal = new Float32Array(n * 3);
     this.seatY = new Float32Array(n);
     this.tint = new Float32Array(n);
-    // Corner sectors: seats beyond the pitch's side lines and past its halfway toward the goal lines.
+    // Corner sectors: seats diagonally beyond the corner flag, outside both the touchline and the goal line.
     this.corner = new Uint8Array(n);
     const w = new THREE.Vector3();
     this.seats.forEach((st, i) => {
@@ -331,7 +422,7 @@ class Stadium {
       this.heads[i * 3] = w.x; this.heads[i * 3 + 1] = w.y; this.heads[i * 3 + 2] = w.z;
       this.seatY[i] = w.y;
       this.tint[i] = 0.9 + rand() * 0.2;
-      this.corner[i] = Math.abs(st.x) > 40 && Math.abs(st.z) > 50 ? 1 : 0;
+      this.corner[i] = Math.abs(st.x) > 34 && Math.abs(st.z) > 52.5 ? 1 : 0;
     });
     this.colors = new Float32Array(n * 3);
     this.target = new Float32Array(n * 3);
@@ -344,7 +435,6 @@ class Stadium {
     this.crowd = mesh;
     this.sway = geo.getAttribute('aSway');
     this.packed = this.occ.pack();
-    this.scale = this.capacity / n;
   }
 }
 
@@ -363,7 +453,6 @@ function resample(poly, n) {
 }
 
 const timeUniform = { value: 0 };
-const EDGE = new THREE.LineBasicMaterial({ color: '#59636a', transparent: true, opacity: 0.55 });
 
 function latticeTexture() {
   return canvasTex(64, 256, (g, w, h) => {
@@ -413,7 +502,7 @@ function pitch(st, { apron }) {
     const ag = new THREE.ShapeGeometry(a);
     ag.rotateX(-Math.PI / 2);
     ag.translate(0, 0.38, 0);
-    st.mesh(ag, apron.material || M.tartan, { cast: false, occluder: false });
+    st.mesh(ag, M.tartan, { cast: false, occluder: false });
   }
   goals(st, 52.5);
 }
@@ -532,120 +621,102 @@ function buildToday() {
   for (const [x, z] of [[-60, -80], [61, -80], [-58, 70], [60, 70]]) floodlight(st, x, z, 50);
   // The open corners today: south-west and south-east, where the curved stand stops short of the long ones.
   st.probes = [[-58, 70], [60, 70]];
+  st.rainBounds = [-120, 120, -135, 135, 44];
   st.finish();
   return st;
 }
 
 // ------------------------------------------------------------------ the winning scheme (VG13 Architects)
-// Dimensions read off the competition boards (floor plans, long section, roof-level site plan) and
-// the aerial render: the seating runs round each corner, the lower tiers meeting on a diagonal from
-// the corner flag, the long roofs cover ±68 m along the pitch and the end roofs ±57 m across it.
-// Where the two sets of roofs stop short of each other, each corner stays open to the sky.
-const LOOK_FUTURE = { seat: '#e6e6e1', back: '#c7c8c3', shade: '#efefeb', aisle: '#b5b6b1' };
+// The new stadium is a mesh of the winning entry drawn from its competition boards, kept in
+// src/future-stadium.bin, which the build inlines as base64: indexed triangles per material in the stadium
+// frame, quantised to 5 mm, and one line per block of seats. Here the parts become meshes, the seat lines
+// spectators, and the solid parts a voxel model for the wind tunnel, the rain paths and the ray-traced fallback.
 
-function panelTexture() {
-  return canvasTex(512, 512, (g, w, h) => {
-    g.fillStyle = '#d9dcdd';
-    g.fillRect(0, 0, w, h);
-    const r = rng(4);
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) {
-      const l = 205 + Math.floor(r() * 26);
-      g.fillStyle = `rgb(${l},${l + 3},${l + 5})`;
-      g.fillRect(x * 128 + 2, y * 64 + 2, 124, 60);
+// Solid fraction of each part in the simulation. The perforated facade metal holds back a bit over half
+// of the air; roof fins, trusses, light gantries and everything at pitch or plaza level stay out.
+const SIM_PARTS = {
+  roof: 1, roof_light: 1, roof_soffit: 1, seat: 1, concrete: 1, concrete_edge: 1, concrete_dark: 1,
+  glass: 1, glass_dark: 1, mullion: 1, shadow: 1, facade: 0.55, facade_rib: 0.55,
+};
+const ROOF_PARTS = ['roof', 'roof_light', 'roof_soffit', 'roof_edge', 'truss', 'steel', 'lamp'];
+const GROUND_PARTS = ['plaza', 'plaza_b', 'hardstand', 'turf_dark', 'turf_light', 'turf_edge', 'field_line', 'board', 'net'];
+const TREAD = 0.44;   // the model's seat pans stand 0.44 m above the tread
+
+// The file is gzipped: "MKS1", a u32 header length, a JSON header padded to 4 bytes, then the blocks the header
+// points to. Per part: uint16 xyz positions in steps of `step` metres from `origin`, and uint16 triangle
+// indices. Per block of seats: int16 [x0, z0, x1, z1, y, fx, fz, n], the ends of the line through the seat
+// pans and its height in cm, the facing in 1/10000 and the number of seats.
+async function loadFutureModel() {
+  const b64 = document.getElementById('future-model').textContent.trim();
+  const zipped = await fetch(`data:application/octet-stream;base64,${b64}`);
+  const buf = await new Response(zipped.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  const size = new DataView(buf).getUint32(4, true);
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, size)));
+  const base = 8 + size, [ox, oy, oz] = header.origin, step = header.step;
+  const parts = {};
+  for (const p of header.parts) {
+    const q = new Uint16Array(buf, base + p.positions, p.vertices * 3), pos = new Float32Array(q.length);
+    for (let i = 0; i < q.length; i += 3) {
+      pos[i] = ox + q[i] * step; pos[i + 1] = oy + q[i + 1] * step; pos[i + 2] = oz + q[i + 2] * step;
     }
-  }, { repeat: [1, 1] });
+    parts[p.name] = { pos, index: new Uint16Array(buf, base + p.indices, p.triangles * 3), material: p.material };
+  }
+  return { parts, rows: new Int16Array(buf, base + header.seatRows.offset, header.seatRows.count * 8) };
 }
 
-function meshTexture() {
-  return canvasTex(256, 256, (g, w, h) => {
-    g.fillStyle = '#c8cdd0';
-    g.fillRect(0, 0, w, h);
-    g.fillStyle = 'rgba(40,48,54,0.55)';
-    for (let y = 2; y < h; y += 6) for (let x = (y / 6) % 2 ? 2 : 5; x < w; x += 6) { g.beginPath(); g.arc(x, y, 1.6, 0, 7); g.fill(); }
-    g.fillStyle = 'rgba(255,255,255,0.35)';
-    for (let x = 0; x < w; x += 64) g.fillRect(x, 0, 2, h);
-  }, { repeat: [1, 1] });
-}
+async function buildFuture() {
+  const { parts, rows } = await loadFutureModel();
+  const st = new Stadium('future', { center: FUTURE_CENTER, capacity: 35000, name: 'Novi', bowl: 38 });
 
-function buildFuture() {
-  const st = new Stadium('future', { center: FUTURE_CENTER, capacity: 35000, name: 'Novi', bowl: 34 });
-  const apron = [[-42, -60], [42, -60], [42, 60], [-42, 60]];
-  apron.material = M.apron;
-  pitch(st, { apron });
-  const plaza = new THREE.Shape([[-150, -104], [108, -104], [108, 140], [-150, 140]].map(([x, z]) => new THREE.Vector2(x, -z)));
-  const pg = new THREE.ShapeGeometry(plaza); pg.rotateX(-Math.PI / 2); pg.translate(0, 0.27, 0);
-  st.mesh(pg, new THREE.MeshLambertMaterial({ color: '#d9d6cd' }), { cast: false, occluder: false });
+  for (const [name, { pos, index, material: m }] of Object.entries(parts)) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(new THREE.BufferAttribute(index, 1));
+    const mat = new THREE.MeshStandardMaterial({
+      color: m.color, metalness: m.metalness, roughness: m.roughness, flatShading: true,
+      side: m.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+      transparent: m.blend, opacity: m.blend ? m.opacity : 1, depthWrite: !m.blend,
+    });
+    const ground = GROUND_PARTS.includes(name);
+    st.mesh(g, mat, { cast: !ground && !m.blend, occluder: !ground });
+    if (ROOF_PARTS.includes(name)) st.roofMaterials.push(mat);
+  }
 
-  const roofMat = new THREE.MeshStandardMaterial({ map: panelTexture(), color: '#e4e8ea', roughness: 0.34, metalness: 0.7, side: THREE.DoubleSide });
-  const facadeMat = new THREE.MeshStandardMaterial({ map: meshTexture(), color: '#ffffff', roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide });
+  // A spectator on every seat of each block, and the blocks of one row, across aisles and vomitories,
+  // joined into a line of stand that is solid below its tread.
+  const lines = new Map();
+  for (let r = 0; r < rows.length; r += 8) {
+    const x0 = rows[r] / 100, z0 = rows[r + 1] / 100, x1 = rows[r + 2] / 100, z1 = rows[r + 3] / 100, y = rows[r + 4] / 100;
+    const fx = rows[r + 5] / 1e4, fz = rows[r + 6] / 1e4, n = rows[r + 7];
+    const yaw = Math.atan2(fx, fz), stand = fx > 0.5 ? 'zapad' : fx < -0.5 ? 'istok' : fz > 0.5 ? 'sjever' : 'jug';
+    for (let k = 0; k < n; k++) {
+      const t = (k + 0.5) / n;
+      st.seats.push({ x: lerp(x0, x1, t), y: y - TREAD, z: lerp(z0, z1, t), yaw, stand });
+    }
+    const d = ((x0 + x1) / 2) * fx + ((z0 + z1) / 2) * fz, a0 = -fz * x0 + fx * z0, a1 = -fz * x1 + fx * z1;
+    const key = `${stand} ${Math.round(d * 10)} ${rows[r + 4]}`;
+    const line = lines.get(key) || { fx, fz, d, y, a0: Infinity, a1: -Infinity };
+    line.a0 = Math.min(line.a0, a0, a1);
+    line.a1 = Math.max(line.a1, a0, a1);
+    lines.set(key, line);
+  }
 
-  // Long stands: lower tier, hospitality boxes, upper tier over a podium. The lower tier meets the
-  // stand behind the goal on a diagonal from the corner flag, the upper tier runs to the end of the facade.
-  for (const s of [-1, 1]) {
-    const name = s < 0 ? 'zapad' : 'istok';
-    st.stand({ name, inner: [[42 * s, -60], [42 * s, 60]], outer: [[61 * s, -79], [61 * s, 79]], occupied: true,
-      tiers: [{ f0: 0, f1: 1, rows: 22, y0: 1.1, y1: 10.1 }],
-      look: { ...LOOK_FUTURE, vomitories: [16, 43, 69.5, 96, 123].map((at) => ({ at, row: 8, rows: 3 })) } });
-    st.box(61 * s, 65 * s, 10.1, 14.2, -66, 66, M.glassWarm);
-    st.box(65 * s, 86 * s, 0, 13.6, -62, 62, M.concrete);
-    for (const z of [-1, 1]) st.box(65 * s, 86 * s, 0, 13.6, 62 * z, 66 * z, M.glass);
-    st.stand({ name, inner: [[59.5 * s, -66], [59.5 * s, 66]], outer: [[80 * s, -66], [80 * s, 66]], occupied: true,
-      tiers: [{ f0: 0, f1: 1, rows: 24, y0: 15.0, y1: 28.0, base0: 13.6, base1: 13.6 }],
-      look: { ...LOOK_FUTURE, vomitories: [14, 40, 66, 92, 118].map((at) => ({ at, row: 2, rows: 3 })) },
-      label: s < 0 ? 'Zapad' : 'Istok', labelAt: [70 * s, 44, 0] });
-    // Long roof: high edge over the pitch, dipping outward onto the facade, ±68 m long.
-    st.slab(s < 0
-      ? [[39 * s, 37, -68], [39 * s, 37, 68], [91 * s, 30, 68], [91 * s, 30, -68]]
-      : [[39 * s, 37, 68], [39 * s, 37, -68], [91 * s, 30, -68], [91 * s, 30, 68]], 1.6, roofMat);
-    facadePanel(st, [88.5 * s, 0, -66], [88.5 * s, 0, 66], [90.5 * s, 30.3, 66], [90.5 * s, 30.3, -66], facadeMat);
-  }
-  // Stands behind the goals: 84 m wide at the front and 144 m at the back, so their rows run on
-  // under the open corners and end in steps along the diagonal.
-  for (const s of [-1, 1]) {
-    const name = s < 0 ? 'sjever' : 'jug';
-    st.stand({ name, inner: [[-42, 60 * s], [42, 60 * s]], outer: [[-72, 90 * s], [72, 90 * s]], occupied: true, block: 24,
-      tiers: [{ f0: 0, f1: 1, rows: 36, y0: 1.0, y1: 16.4 }],
-      look: { ...LOOK_FUTURE, vomitories: [13, 35, 57, 79, 101].map((at) => ({ at, row: 12, rows: 3 })) },
-      label: s < 0 ? 'Sjever' : 'Jug', labelAt: [0, 36, 78 * s] });
-    st.slab(s < 0
-      ? [[-57, 31.6, 56 * s], [57, 31.6, 56 * s], [57, 17, 100 * s], [-57, 17, 100 * s]]
-      : [[57, 31.6, 56 * s], [-57, 31.6, 56 * s], [-57, 17, 100 * s], [57, 17, 100 * s]], 1.6, roofMat);
-    facadePanel(st, [-78, 0, 93 * s], [78, 0, 93 * s], [78, 17.3, 99 * s], [-78, 17.3, 99 * s], facadeMat);
-    st.box(-57, 57, 0, 16.4, 90 * s, 93 * s, M.concrete);
-  }
-  // The corners, open to the sky between the roofs. Below the gap, a flat terrace on three columns
-  // runs on from the end of each long stand, and the rake behind the goal carries on past its last
-  // seats as a white wing that ends in a point. People walk underneath both.
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    const P = (pts) => pts.map(([x, y, z]) => [x * sx, y, z * sz]);
-    // Mirroring one axis flips the winding; reorder so the top faces keep facing up.
-    const up = (pts) => (sx * sz > 0 ? pts : [pts[0], pts[3], pts[2], pts[1]]);
-    st.slab(up(P([[74, 14.4, 66], [74, 14.4, 82], [90, 14.4, 82], [90, 14.4, 66]])), 1.1, M.white, { roof: false, tunnel: false });
-    for (const [x, z] of [[78, 80], [87, 80], [78, 72]]) st.box(x * sx - 0.45, x * sx + 0.45, 0, 13.3, z * sz - 0.45, z * sz + 0.45, M.white, { occ: false, solid: 0 });
-    st.slab(up(P([[61, 10.9, 79], [75, 18.1, 93], [96, 18.1, 93], [69, 10.9, 79]])), 1.2, M.white, { roof: false, tunnel: false });
-    st.label('otvor', [78 * sx, 30, 82 * sz], 'hole');
-  }
-  st.probes = [[-78, -80], [78, -80], [-78, 80], [78, 80]];
-  // Floodlights run along the inner roof edges.
-  const lampGeo = [];
-  for (const s of [-1, 1]) {
-    for (let z = -64; z <= 64; z += 4) lampGeo.push(new THREE.BoxGeometry(0.5, 0.35, 1.4).translate(39.6 * s, 35.2, z));
-    for (let x = -54; x <= 54; x += 4) lampGeo.push(new THREE.BoxGeometry(1.4, 0.35, 0.5).translate(x, 29.8, 56.6 * s));
-  }
-  st.mesh(mergeGeometries(lampGeo), M.lamp, { cast: false, occluder: false });
+  const vox = new VoxelModel({ x0: -98, x1: 98, z0: -102, z1: 106, top: 44 });
+  for (const [name, s] of Object.entries(SIM_PARTS)) vox.surface(parts[name].pos, parts[name].index, Math.round(s * 255));
+  // The tread runs from just in front of the seat pan back to the next row.
+  for (const l of lines.values()) vox.fillBelow(l.fx, l.fz, l.a0, l.a1, l.d - 0.5, l.d + 0.35, l.y - TREAD);
+  st.voxels = vox.close();
+  st.rainBounds = [-98, 98, -102, 106, 46];
+
+  st.label('Zapad', [-80, 46, 0]);
+  st.label('Istok', [80, 46, 0]);
+  st.label('Sjever', [0, 40, -86]);
+  st.label('Jug', [0, 40, 88]);
+  // The corners, open to the sky where the long roofs (±67 m) and the end roofs (±55 m) stop short of
+  // each other, and open at the ground past the ends of the stands and the facades. The probes stand
+  // where the opening is clear of every part at all four probe heights.
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) st.label('otvor', [80 * sx, 30, 90 * sz], 'hole');
+  st.probes = [[-80, -90], [80, -90], [-80, 90], [80, 90]];
   st.finish();
   return st;
-}
-
-function facadePanel(st, a, b, c, d, mat) {
-  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), C = new THREE.Vector3(...c), D = new THREE.Vector3(...d);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute([A, B, C, A, C, D].flatMap((p) => [p.x, p.y, p.z]), 3));
-  const L = A.distanceTo(B) / 14, H = A.distanceTo(D) / 14;
-  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, L, 0, L, H, 0, 0, L, H, 0, H], 2));
-  g.computeVertexNormals();
-  st.mesh(g, mat);
-  st.occ.poly([A, B, C, D].map((p) => p.clone().applyMatrix4(st.matrix)), 0.25, 0.45);
-  // Perforated metal: in the tunnel it holds back a bit over half of the air that meets it.
-  st.solids.panel([A, B, C, D], 0.3, 0.55);
 }

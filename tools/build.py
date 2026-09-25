@@ -1,8 +1,9 @@
-"""Inline style, scene data and app code into one publishable HTML file.
+"""Inline style, scene data, the new stadium's model and app code into one publishable HTML file.
 
 dist/maksimir-pod-kisom.html is the artifact body (no <html>/<head>, the host wraps it);
 dist/index.html wraps the same body in a document for local viewing.
 """
+import base64
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,6 +18,7 @@ def main():
     page = (SRC / "page.html").read_text()
     body = (page.replace("{{STYLE}}", (SRC / "style.css").read_text())
                 .replace("{{ENV}}", (SRC / "env.json").read_text().replace("</", "<\\/"))
+                .replace("{{FUTURE}}", base64.b64encode((SRC / "future-stadium.bin").read_bytes()).decode())
                 .replace("{{APP}}", "\n".join((SRC / "js" / f).read_text() for f in ORDER)))
     DIST.mkdir(exist_ok=True)
     (DIST / "maksimir-pod-kisom.html").write_text(body)

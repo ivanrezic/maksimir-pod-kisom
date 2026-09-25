@@ -17,8 +17,9 @@ const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').mat
 const PITCH_BEARING = 342.3;                        // bearing of the pitch axis toward the north stand
 const STADIUM_YAW = (360 - PITCH_BEARING) * DEG;
 const UP = new THREE.Vector3(0, 1, 0);
-// The winning scheme drops the running track, so the bowl moves ~26 m toward Maksimirska cesta.
-const FUTURE_CENTER = new THREE.Vector3(0, 0, -26).applyAxisAngle(UP, STADIUM_YAW);
+// Centre spot of the new pitch (45.8187826 N, 16.0177421 E), from the winning scheme's 1:1000 site plans:
+// ~15 m nearer Maksimirska cesta and ~14 m further west (across the pitch) than today's.
+const FUTURE_CENTER = new THREE.Vector3(-18.39, 0, -10.14);
 const MID = new THREE.Vector3(0, 0, -12);
 
 function rng(seed) {
@@ -169,13 +170,6 @@ function seatTexture(o) {
       g.fillStyle = o.aisle;
       for (const a of o.aisles) g.fillRect((a - 0.6) * mU, 0, 1.2 * mU, h);
     }
-    if (o.vomitories) {
-      g.fillStyle = '#23292e';
-      for (const v of o.vomitories) {
-        const y0 = h - (v.row + v.rows) * rowPx;
-        g.fillRect((v.at - 1.9) * mU, y0, 3.8 * mU, v.rows * rowPx);
-      }
-    }
     if (o.text) {
       const rowsTall = o.text.rows;
       const px = rowsTall * rowPx;
@@ -214,7 +208,6 @@ const M = {
   ochre: new THREE.MeshStandardMaterial({ color: '#c98a4b', roughness: 0.85 }),
   magenta: new THREE.MeshStandardMaterial({ color: '#d0177d', roughness: 0.6 }),
   tartan: new THREE.MeshLambertMaterial({ color: '#566f9f' }),
-  apron: new THREE.MeshLambertMaterial({ color: '#3f7a39' }),
   white: new THREE.MeshStandardMaterial({ color: '#f4f4f1', roughness: 0.6 }),
   steel: new THREE.MeshStandardMaterial({ color: '#9aa4ab', roughness: 0.5, metalness: 0.6 }),
   lamp: new THREE.MeshBasicMaterial({ color: '#fffbe8' }),

@@ -59,21 +59,22 @@ function updateResults(st) {
   if (!st.ratio) return;
   const n = st.seats.length, U = state.wind, wet = st.wet;
   const local = new Float32Array(n);
-  let wetSum = 0, dry = 0, windSum = 0, windy = 0, covered = 0, wc = 0, wr = 0, nc = 0;
+  let wetSum = 0, windSum = 0, windy = 0, covered = 0, coveredCorner = 0, wc = 0, wr = 0, nc = 0;
   for (let i = 0; i < n; i++) {
     local[i] = U * st.ratio[i];
     if (st.corner[i]) nc++;
     if (wet) { if (st.corner[i]) wc += wet[i]; else wr += wet[i]; }
     windSum += local[i];
     if (local[i] > 5) windy++;
-    if (wet) { wetSum += wet[i]; if (wet[i] < 0.15) dry++; }
-    if (st.cover && st.cover[i] < 0.5) covered++;
+    if (wet) wetSum += wet[i];
+    if (st.cover && st.cover[i] < 0.5) { covered++; if (st.corner[i]) coveredCorner++; }
     st.sway.array[i] = clamp(local[i] / 9, 0, 1.3);
   }
   st.sway.needsUpdate = true;
   results[st.key] = {
-    wet, local, rain: state.rain, wetShare: wet && n ? wetSum / n : null, dry: dry * st.scale,
+    wet, local, rain: state.rain, wetShare: wet && n ? wetSum / n : null, dry: wet && n ? (1 - wetSum / n) * st.capacity : st.capacity,
     wind: n ? windSum / n : 0, windy: n ? windy / n : 0, cover: st.cover ? covered / n : null,
+    coverCorner: st.cover && nc ? coveredCorner / nc : null,
     corner: U * st.stats.corner, rest: U * st.stats.rest, hole: st.stats.hole,
     wetCorner: wet && nc ? wc / nc : null, wetRest: wet && n > nc ? wr / (n - nc) : null,
   };
@@ -140,8 +141,12 @@ function renderCorners() {
   const hole = f.hole === null ? '' : `, a kroz otvorene kutove struji ${fmt(f.hole * 100)}\u00a0% slobodnog vjetra na istoj visini`;
   const vsToday = f.corner < t.corner ? `U kutovima je ipak mirnije nego danas, kad ondje puše ${fmt(t.corner, 1)}\u00a0m/s.`
     : `U kutovima puše i više nego danas, kad ondje puše ${fmt(t.corner, 1)}\u00a0m/s.`;
+  const exposed = f.coverCorner === null ? null : 1 - f.coverCorner;
+  const roofNote = exposed === null ? ''
+    : exposed >= 0.005 ? ` Krovovi ne pokrivaju ${fmt(exposed * 100)}\u00a0% kutnih sjedala.`
+    : ' Krovovi pokrivaju sva kutna sjedala, pa do njih kiša stiže samo ukoso.';
   const rainNote = state.rain > 0 && f.wetCorner !== null
-    ? ` Na kiši je ${fmt(f.wetCorner * 100)}\u00a0% gledatelja u kutnim sektorima i ${fmt(f.wetRest * 100)}\u00a0% na ostalim sjedalima, jer krovovi ne dosežu kutove.`
+    ? ` Na kiši je ${fmt(f.wetCorner * 100)}\u00a0% gledatelja u kutnim sektorima i ${fmt(f.wetRest * 100)}\u00a0% na ostalim sjedalima.${roofNote}`
     : '';
   el.textContent = `${verdict} Uz ${fmt(state.wind, 1)}\u00a0m/s ${d.text} kutovi imaju ${fmt(f.corner, 1)}\u00a0m/s, ostala sjedala ${fmt(f.rest, 1)}\u00a0m/s${hole}. ${vsToday}${rainNote}`;
 }
@@ -303,7 +308,6 @@ function bindUI() {
       m.depthWrite = !state.xray;
       m.needsUpdate = true;
     }
-    for (const st of STADIUMS) for (const e of st.roofEdges) e.visible = !state.xray;
   });
   $('#slice').addEventListener('change', (e) => { state.slice = e.target.checked; });
   $('#slice-h').addEventListener('input', (e) => { state.sliceH = +e.target.value; $('#slice-out').textContent = `${state.sliceH} m`; });
@@ -327,7 +331,7 @@ function bindUI() {
 // ------------------------------------------------------------------ boot
 buildEnvironment();
 const today = buildToday();
-const future = buildFuture();
+const future = await buildFuture();
 const STADIUMS = [today, future];
 const rain = buildRain();
 const streaks = STADIUMS.map((st) => new WindStreaks(st));
@@ -372,7 +376,7 @@ function onHeuristic(st, r, p) {
 }
 if (LBM.ok) {
   aero = new Aero(onField, renderProgress);
-  rainSims = new Map([[today, new RainSim(today, [-120, 120, -135, 135, 44], onRain)], [future, new RainSim(future, [-110, 110, -112, 112, 46], onRain)]]);
+  rainSims = new Map(STADIUMS.map((st) => [st, new RainSim(st, st.rainBounds, onRain)]));
 } else {
   sims = STADIUMS.map((st) => new Sim(st, onHeuristic));
 }

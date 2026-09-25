@@ -178,7 +178,13 @@ function voxelizeTunnel(st, frame) {
     const rx = w.x - frame.origin.x, rz = w.z - frame.origin.z;
     return [(rx * frame.ex.x + rz * frame.ex.z) / dx - 0.5, (rx * frame.ey.x + rz * frame.ey.z) / dx - 0.5, w.y / dx - 0.5];
   };
-  for (const s of st.solids.resolve(1.3 * dx, true)) {
+  if (st.voxels) {
+    for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const v = st.voxels.cell(c0.x + di.x * i + dj.x * j, c0.y + k * dx, c0.z + di.z * i + dj.z * j, dx);
+      if (v) grid[(k * ny + j) * nx + i] = v;
+    }
+  }
+  for (const s of st.solids.resolve()) {
     const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
     for (const x of [s.min.x, s.max.x]) for (const y of [s.min.y, s.max.y]) for (const z of [s.min.z, s.max.z]) {
       const g = toGrid(new THREE.Vector3(x, y, z).applyMatrix4(st.matrix));
@@ -364,7 +370,12 @@ const RAIN_GRID = 2;
 function rainMask(st, [x0, x1, z0, z1, top]) {
   const dx = RAIN_GRID, nx = Math.ceil((x1 - x0) / dx), nz = Math.ceil((z1 - z0) / dx), ny = Math.ceil(top / dx);
   const mask = new Uint8Array(nx * ny * nz);
-  for (const s of st.solids.resolve(2.6)) {
+  if (st.voxels) {
+    for (let k = 0; k < ny; k++) for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      mask[(k * nz + j) * nx + i] = st.voxels.cell(x0 + (i + 0.5) * dx, (k + 0.5) * dx, z0 + (j + 0.5) * dx, dx);
+    }
+  }
+  for (const s of st.solids.resolve()) {
     const i0 = Math.max(0, Math.floor((s.min.x - x0) / dx)), i1 = Math.min(nx - 1, Math.floor((s.max.x - x0) / dx));
     const j0 = Math.max(0, Math.floor((s.min.z - z0) / dx)), j1 = Math.min(nz - 1, Math.floor((s.max.z - z0) / dx));
     const k0 = Math.max(0, Math.floor(s.min.y / dx)), k1 = Math.min(ny - 1, Math.floor(s.max.y / dx));
@@ -540,11 +551,13 @@ function fieldStats(st, field) {
     ratio[i] = field.seatSpeed(p);
     if (st.corner[i]) { cs += ratio[i]; cn++; } else { rs += ratio[i]; rn++; }
   }
+  const heights = [8, 14, 20, 26];
+  const free = heights.reduce((a, h) => a + windProfile(h), 0) / heights.length;
   let hole = 0;
   for (const [x, z] of st.probes) {
     let s = 0;
-    for (const h of [8, 14, 20, 26]) s += field.speed(st.local(x, h, z));
-    hole = Math.max(hole, s / 4 / windProfile(17));
+    for (const h of heights) s += field.speed(st.local(x, h, z));
+    hole = Math.max(hole, s / heights.length / free);
   }
   return { ratio, corner: cn ? cs / cn : 0, rest: rn ? rs / rn : 0, hole };
 }

@@ -37,7 +37,7 @@
       <svg viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0 -15 L6 8 L0 4 L-6 8 Z"/></svg>
       <span>S</span>
     </div>
-    <p class="loading" id="loading">Gradim park, tribine i 60.000 gledatelja…</p>
+    <p class="loading" id="loading">Gradim park, tribine i 64.000 gledatelja…</p>
   </section>
 
   <aside id="panel">
@@ -117,7 +117,7 @@
           <tr><th scope="row">Na kiši na ostalim sjedalima</th><td data-c="today.wetRest">…</td><td data-c="future.wetRest">…</td></tr>
         </tbody>
       </table>
-      <p class="hint">Kutni sektori su sjedala izvan linija terena, bliže golovima nego sredini. Danas su otvoreni jugozapadni i jugoistočni kut, a na novom stadionu sva četiri.</p>
+      <p class="hint">Kutni sektori su sjedala dijagonalno iza kutne zastavice: izvan produžetka uzdužne linije terena i izvan produžetka gol-linije. Danas su otvoreni jugozapadni i jugoistočni kut, a na novom stadionu sva četiri.</p>
       <p class="hint" id="fallback-note" hidden>Ovaj preglednik ne može pokrenuti simulaciju strujanja, pa su brojke procjena iz praćenja zraka.</p>
       <button type="button" class="action" id="sweep">Provjeri svih 8 smjerova vjetra</button>
       <div class="sweep" id="sweep-box" hidden>
@@ -181,6 +181,7 @@
 </div>
 
 <script type="application/json" id="env-data">{{ENV}}</script>
+<script type="text/plain" id="future-model">{{FUTURE}}</script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",

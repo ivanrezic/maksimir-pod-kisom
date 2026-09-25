@@ -49,12 +49,13 @@ function windRays(p) {
 
 // Runs off the main thread: one worker per stadium, tracing rays from every spectator.
 function workerMain() {
-  let occ, heads, nOcc, bowl, cover = null, encl = null;
+  let occ, heads, nOcc, bowl, grid = null, cover = null, encl = null;
   const windCache = new Map();
   // Transmission along one ray. mode 0: rain, each surface lets rainPass through.
   // mode 1: wind shelter, each hit weighted by how tall the surface is where the ray meets it.
   // mode 2: enclosure, any wind-blocking surface counts at full strength.
   function cast(ox, oy, oz, rx, ry, rz, mode, maxT) {
+    if (grid) return castGrid(ox, oy, oz, rx, ry, rz, mode, maxT);
     let trans = 1;
     for (let k = 0; k < nOcc; k++) {
       const b = k * 19;
@@ -77,6 +78,29 @@ function workerMain() {
       if (mode === 0) { trans *= occ[b + 17]; if (trans < 0.02) return 0; }
       else if (mode === 2) trans *= occ[b + 18];
       else trans *= 1 - (1 - occ[b + 18]) * Math.exp(-t / (8 * Math.max(hy, 4)));
+    }
+    return trans;
+  }
+  // A stadium built from voxels is marched through its 2 m grid in its own frame (every ray here climbs).
+  // Each run of solid cells counts as one surface, closed or perforated metal, like one polygon above.
+  // The first 2.4 m are skipped: the cell around a head often holds the rows behind it.
+  function castGrid(ox, oy, oz, rx, ry, rz, mode, maxT) {
+    const { mask, g, cos, sin } = grid;
+    const lx = rx * cos - rz * sin, lz = rx * sin + rz * cos;
+    let trans = 1, inside = false;
+    for (let t = 2.4; t < maxT; t += g.dx / 2) {
+      const x = ox + lx * t, y = oy + ry * t, z = oz + lz * t;
+      if (y >= g.top) break;
+      const i = Math.floor((x - g.x0) / g.dx), j = Math.floor((z - g.z0) / g.dx), k = Math.floor(y / g.dx);
+      if (i < 0 || j < 0 || i >= g.nx || j >= g.nz) break;
+      const m = k < 0 ? 255 : mask[(k * g.nz + j) * g.nx + i];
+      if (!m) { inside = false; continue; }
+      if (inside) continue;
+      inside = true;
+      const pass = m >= 250 ? 0 : mode === 0 ? 0.25 : 0.45;
+      if (mode === 0) { trans *= pass; if (trans < 0.02) return 0; }
+      else if (mode === 2) trans *= pass;
+      else trans *= 1 - (1 - pass) * Math.exp(-t / (8 * Math.max(y, 4)));
     }
     return trans;
   }
@@ -119,7 +143,7 @@ function workerMain() {
   }
   self.onmessage = (e) => {
     const m = e.data;
-    if (m.type === 'init') { occ = m.occ; heads = m.heads; bowl = m.bowl; nOcc = occ.length / 19; return; }
+    if (m.type === 'init') { occ = m.occ; heads = m.heads; bowl = m.bowl; grid = m.grid; nOcc = occ.length / 19; return; }
     if (!cover) {
       cover = trace([{ d: [0, 1, 0], w: 1 }], 0, 500);
       const ring = [];
@@ -138,7 +162,9 @@ class Sim {
   constructor(st, onResult) {
     this.st = st;
     this.worker = new Worker(workerURL);
-    this.worker.postMessage({ type: 'init', occ: st.packed, heads: st.heads, bowl: st.bowl });
+    // A stadium built from voxels is traced through its rain mask, from the heads in its own frame.
+    const grid = st.voxels ? { ...rainMask(st, st.rainBounds), cos: Math.cos(STADIUM_YAW), sin: Math.sin(STADIUM_YAW) } : null;
+    this.worker.postMessage({ type: 'init', occ: st.packed, heads: grid ? st.headsLocal : st.heads, bowl: st.bowl, grid });
     this.busy = false;
     this.pending = null;
     this.seq = 0;
