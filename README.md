@@ -27,3 +27,9 @@ Svaki push na `main` objavljuje stranicu kroz GitHub Pages (`.github/workflows/p
 
 - Okolina i tlocrti današnjih tribina: © suradnici [OpenStreetMapa](https://www.openstreetmap.org/copyright), ODbL.
 - Novi stadion prema [plakatima prve nagrade](https://stadion-maksimir.zagreb.hr/hr/rezultati-natjecaja-128/128), današnji prema [modelu Genius & Gerry](https://geniusandgerry.com/products/stadion-maksimir-zagreb-croatia-3d-model) i fotografijama.
+
+## Licenca
+
+Kod je pod [MIT licencom](LICENSE): slobodno ga koristi, mijenjaj i objavljuj, samo zadrži obavijest o autorskim pravima. Podaci iz OpenStreetMapa (`tools/osm_*.json`, `src/env.json`) ostaju pod licencom [ODbL](https://opendatacommons.org/licenses/odbl/).
+
+Prijedlozi i ispravci su dobrodošli kao PR.
