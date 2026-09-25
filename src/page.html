@@ -1,0 +1,192 @@
+<title>Maksimir pod kišom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap">
+<style>
+{{STYLE}}
+</style>
+
+<div id="app">
+  <section id="stage" aria-label="3D usporedba današnjeg i novog stadiona">
+    <canvas id="gl"></canvas>
+    <div class="views">
+      <div class="view" id="view-a">
+        <div class="labels" aria-hidden="true"></div>
+        <header class="view-head">
+          <h2>Danas</h2>
+          <p>Stadion Maksimir u punom kapacitetu, 35.123 sjedala. Nijedna tribina nema krov.</p>
+        </header>
+        <dl class="view-stats" data-for="today">
+          <div><dt>Na kiši</dt><dd data-k="wet">&nbsp;</dd><dd class="sub" data-k="wetAbs">&nbsp;</dd></div>
+          <div><dt>Vjetar na sjedalu</dt><dd data-k="wind">&nbsp;</dd><dd class="sub" data-k="windy">&nbsp;</dd></div>
+        </dl>
+      </div>
+      <div class="view" id="view-b">
+        <div class="labels" aria-hidden="true"></div>
+        <header class="view-head">
+          <h2>Novi Maksimir</h2>
+          <p>Pobjedničko rješenje VG13 Architects, 35.000 sjedala. Krovovi pokrivaju tribine, a sva četiri kuta ostaju otvorena.</p>
+        </header>
+        <dl class="view-stats" data-for="future">
+          <div><dt>Na kiši</dt><dd data-k="wet">&nbsp;</dd><dd class="sub" data-k="wetAbs">&nbsp;</dd></div>
+          <div><dt>Vjetar na sjedalu</dt><dd data-k="wind">&nbsp;</dd><dd class="sub" data-k="windy">&nbsp;</dd></div>
+        </dl>
+      </div>
+    </div>
+    <div class="north" id="north" title="Sjever">
+      <svg viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0 -15 L6 8 L0 4 L-6 8 Z"/></svg>
+      <span>S</span>
+    </div>
+    <p class="loading" id="loading">Gradim park, tribine i 60.000 gledatelja…</p>
+  </section>
+
+  <aside id="panel">
+    <div class="title-block">
+      <h1>Maksimir pod kišom</h1>
+      <p>Današnji stadion i pobjednik arhitektonskog natječaja iz rujna 2026., svaki na svojoj parceli uz Park Maksimir i okrenut prema stranama svijeta kao u stvarnosti. Vjetar oko svakog stadiona računa 3D simulacija strujanja zraka. Namjesti vjetar i kišu i pogledaj tko pokisne i gdje puše.</p>
+    </div>
+
+    <section class="block" aria-labelledby="h-weather">
+      <h2 id="h-weather">Vrijeme</h2>
+      <div class="presets" role="group" aria-label="Gotove vremenske situacije">
+        <button type="button" data-preset="rominjanje">Rominjanje</button>
+        <button type="button" data-preset="jugozapadnjak">Jugozapadnjak</button>
+        <button type="button" data-preset="pljusak">Ljetni pljusak</button>
+        <button type="button" data-preset="sjeveroistocnjak">Sjeveroistočnjak</button>
+      </div>
+
+      <div class="field">
+        <div class="field-row">
+          <label for="wind">Vjetar</label>
+          <output id="wind-out" for="wind"></output>
+        </div>
+        <input type="range" id="wind" min="0" max="20" step="0.5" value="8">
+        <p class="hint" id="wind-hint"></p>
+      </div>
+
+      <div class="field dial-field">
+        <div class="dial" id="dial" role="slider" tabindex="0" aria-label="Smjer iz kojeg puše vjetar" aria-valuemin="0" aria-valuemax="359">
+          <svg viewBox="-60 -60 120 120" aria-hidden="true">
+            <circle class="dial-ring" r="46"/>
+            <g class="dial-ticks"></g>
+            <g class="dial-arrow"><line x1="0" y1="-40" x2="0" y2="30"/><path d="M0 40 L-7 26 L7 26 Z"/><circle cy="-40" r="4"/></g>
+          </svg>
+        </div>
+        <div>
+          <p class="dial-label">Smjer</p>
+          <p class="dial-value" id="dial-value"></p>
+          <p class="hint">Povuci po krugu ili koristi strelice.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-row">
+          <label for="rain">Kiša</label>
+          <output id="rain-out" for="rain"></output>
+        </div>
+        <input type="range" id="rain" min="0" max="60" step="0.5" value="6">
+        <p class="hint" id="rain-hint"></p>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="h-compare">
+      <h2 id="h-compare">Usporedba</h2>
+      <table class="compare">
+        <thead><tr><th scope="col"><span class="sr">Mjera</span></th><th scope="col">Danas</th><th scope="col">Novi</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Gledatelji na kiši</th><td data-c="today.wet"></td><td data-c="future.wet"></td></tr>
+          <tr><th scope="row">Suhi gledatelji</th><td data-c="today.dry"></td><td data-c="future.dry"></td></tr>
+          <tr><th scope="row">Prosječan vjetar na sjedalu</th><td data-c="today.wind"></td><td data-c="future.wind"></td></tr>
+          <tr><th scope="row">Neugodno vjetrovito, iznad 5 m/s</th><td data-c="today.windy"></td><td data-c="future.windy"></td></tr>
+          <tr><th scope="row">Sjedala pod krovom kad kiša pada okomito</th><td data-c="today.cover"></td><td data-c="future.cover"></td></tr>
+        </tbody>
+      </table>
+      <p class="busy" id="busy" hidden></p>
+    </section>
+
+    <section class="block" aria-labelledby="h-corners">
+      <h2 id="h-corners">Puše li kroz otvore u kutovima?</h2>
+      <p class="answer" id="corner-answer">Računam strujanje zraka oko oba stadiona…</p>
+      <table class="compare">
+        <thead><tr><th scope="col"><span class="sr">Mjera</span></th><th scope="col">Danas</th><th scope="col">Novi</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Vjetar u kutnim sektorima</th><td data-c="today.corner">…</td><td data-c="future.corner">…</td></tr>
+          <tr><th scope="row">Vjetar na ostalim sjedalima</th><td data-c="today.rest">…</td><td data-c="future.rest">…</td></tr>
+          <tr><th scope="row">Strujanje kroz otvorene kutove, udio slobodnog vjetra</th><td data-c="today.hole">…</td><td data-c="future.hole">…</td></tr>
+          <tr><th scope="row">Na kiši u kutnim sektorima</th><td data-c="today.wetCorner">…</td><td data-c="future.wetCorner">…</td></tr>
+          <tr><th scope="row">Na kiši na ostalim sjedalima</th><td data-c="today.wetRest">…</td><td data-c="future.wetRest">…</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">Kutni sektori su sjedala izvan linija terena, bliže golovima nego sredini. Danas su otvoreni jugozapadni i jugoistočni kut, a na novom stadionu sva četiri.</p>
+      <p class="hint" id="fallback-note" hidden>Ovaj preglednik ne može pokrenuti simulaciju strujanja, pa su brojke procjena iz praćenja zraka.</p>
+      <button type="button" class="action" id="sweep">Provjeri svih 8 smjerova vjetra</button>
+      <div class="sweep" id="sweep-box" hidden>
+        <p class="chart-title">Novi stadion, vjetar na sjedalima u m/s</p>
+        <div class="chart-legend"><span><i class="sw s1"></i>ostala sjedala</span><span><i class="sw s2"></i>kutni sektori</span></div>
+        <div class="chart" id="sweep-chart"></div>
+        <details>
+          <summary>Brojke po smjerovima, u m/s</summary>
+          <div class="table-scroll"><table class="compare sweep-table" id="sweep-table"></table></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="h-view">
+      <h2 id="h-view">Prikaz</h2>
+      <div class="field">
+        <p class="field-label" id="lbl-color">Boja gledatelja</p>
+        <div class="segmented" role="group" aria-labelledby="lbl-color">
+          <button type="button" data-mode="rain" aria-pressed="true">Kiša</button>
+          <button type="button" data-mode="wind" aria-pressed="false">Vjetar</button>
+        </div>
+        <div class="legend" id="legend-rain">
+          <span class="ramp ramp-rain"></span>
+          <span class="legend-ends"><span>suho</span><span>mokro</span></span>
+        </div>
+        <div class="legend" id="legend-wind" hidden>
+          <span class="ramp ramp-wind"></span>
+          <span class="legend-ends"><span>0</span><span>3</span><span>5</span><span>8+ m/s</span></span>
+        </div>
+        <p class="hint">Žuti tragovi u zraku pokazuju kako vjetar struji preko stadiona, bijele crte su kiša.</p>
+      </div>
+      <div class="field">
+        <p class="field-label" id="lbl-cam">Pogled</p>
+        <div class="cams" role="group" aria-labelledby="lbl-cam">
+          <button type="button" data-cam="zrak">Iz zraka</button>
+          <button type="button" data-cam="jezero">S Prvog jezera</button>
+          <button type="button" data-cam="tribina">S južne tribine</button>
+          <button type="button" data-cam="tlocrt">Tlocrt</button>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="xray"> Prozirni krovovi, da se vide gledatelji ispod njih</label>
+      <div class="field" id="slice-field">
+        <label class="check"><input type="checkbox" id="slice"> Presjek brzine vjetra na odabranoj visini</label>
+        <div class="field-row">
+          <label for="slice-h">Visina presjeka</label>
+          <output id="slice-out" for="slice-h">12 m</output>
+        </div>
+        <input type="range" id="slice-h" min="3" max="40" step="1" value="12">
+        <div class="legend">
+          <span class="ramp ramp-slice"></span>
+          <span class="legend-ends"><span>mirno</span><span>50 %</span><span>100 %</span><span>140 % slobodnog vjetra</span></span>
+        </div>
+      </div>
+    </section>
+
+    <footer class="notes">
+      <p>Vjetar računa 3D simulacija strujanja zraka (Lattice-Boltzmann s modelom turbulencije, ćelije od <span id="cell-size">5</span> m) oko svakog stadiona za odabrani smjer. Jačina vjetra samo skalira rezultat. Kapi pratimo unatrag od glave svakog gledatelja kroz to polje, a brzina padanja ovisi o jačini kiše. Okolne zgrade i park nisu u simulaciji. Model je grub i služi za usporedbu, ne za projektiranje.</p>
+      <p>Okolina i tlocrti današnjih tribina: © suradnici <a href="https://www.openstreetmap.org/copyright">OpenStreetMapa</a>. Novi stadion prema <a href="https://stadion-maksimir.zagreb.hr/hr/rezultati-natjecaja-128/128">plakatima prve nagrade</a>, današnji prema <a href="https://geniusandgerry.com/products/stadion-maksimir-zagreb-croatia-3d-model">modelu Genius &amp; Gerry</a> i fotografijama.</p>
+    </footer>
+  </aside>
+</div>
+
+<script type="application/json" id="env-data">{{ENV}}</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+{{APP}}
+</script>
