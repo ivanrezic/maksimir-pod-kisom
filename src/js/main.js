@@ -88,12 +88,26 @@ function paint(st) {
   if (!r) return;
   const c = new THREE.Color();
   for (let i = 0; i < st.seats.length; i++) {
-    if (state.mode === 'rain') c.copy(COLORS.dry).lerp(COLORS.wet, r.wet && state.rain > 0 ? clamp(r.wet[i] * 1.15, 0, 1) : 0);
+    // Rain: the share of the open-sky rain reaching the seat, on a square-root scale so that a spectator catching
+    // a fifth of it already shows as getting wet.
+    if (state.mode === 'rain') c.copy(COLORS.dry).lerp(COLORS.wet, r.wet && state.rain > 0 ? clamp(Math.sqrt(r.wet[i]) * 1.1, 0, 1) : 0);
     else windColor(r.local[i], c);
     const t = st.tint[i];
     st.target[i * 3] = c.r * t; st.target[i * 3 + 1] = c.g * t; st.target[i * 3 + 2] = c.b * t;
   }
   st.fade = 1;
+}
+
+// A share as a percentage, with a decimal below 10 % so that small shares don't round away.
+function pct(x) {
+  const v = x * 100;
+  return `${v < 0.05 ? '0' : fmt(v, v < 9.95 ? 1 : 0)}\u00a0%`;
+}
+// About how many people: to ten below a thousand, to a hundred above; nobody where the share shows as 0 %.
+function people(share, capacity) {
+  if (share < 0.0005) return 'gotovo nitko';
+  const n = share * capacity, step = n < 1000 ? 10 : 100;
+  return `oko ${fmt(Math.round(n / step) * step)} ljudi`;
 }
 
 function renderStats() {
@@ -107,16 +121,20 @@ function renderStats() {
       $('[data-k="windy"]', box).textContent = ' ';
       continue;
     }
+    // Numbers still from the last wind direction while the tunnel works on the new one.
+    const stale = !!st.field && st.field.from !== state.from;
+    box.classList.toggle('stale', stale);
+    for (const c of document.querySelectorAll(`[data-c^="${st.key}."]`)) c.classList.toggle('stale', stale);
     const rainOn = state.rain > 0, wetKnown = r.wetShare !== null;
-    $('[data-k="wet"]', box).textContent = !rainOn ? 'nema kiše' : wetKnown ? `${fmt(r.wetShare * 100)}\u00a0%` : '…';
-    $('[data-k="wetAbs"]', box).textContent = rainOn && wetKnown ? `oko ${fmt(Math.round((r.wetShare * st.capacity) / 100) * 100)} ljudi` : ' ';
+    $('[data-k="wet"]', box).textContent = !rainOn ? 'nema kiše' : wetKnown ? pct(r.wetShare) : '…';
+    $('[data-k="wetAbs"]', box).textContent = rainOn && wetKnown ? people(r.wetShare, st.capacity) : ' ';
     $('[data-k="wind"]', box).textContent = `${fmt(r.wind, 1)}\u00a0m/s`;
-    $('[data-k="windy"]', box).textContent = `${fmt(r.windy * 100)}\u00a0% iznad 5 m/s`;
-    set('wet', !rainOn ? '0 %' : wetKnown ? `${fmt(r.wetShare * 100)}\u00a0%<span class="bar" style="width:${Math.max(2, r.wetShare * 100)}%"></span>` : '…');
+    $('[data-k="windy"]', box).textContent = `${pct(r.windy)} iznad 5 m/s`;
+    set('wet', !rainOn ? '0 %' : wetKnown ? `${pct(r.wetShare)}<span class="bar" style="width:${Math.max(2, r.wetShare * 100)}%"></span>` : '…');
     set('dry', `${fmt(Math.round((rainOn && wetKnown ? r.dry : st.capacity) / 100) * 100)}<small>od ${fmt(st.capacity)}</small>`);
     set('wind', `${fmt(r.wind, 1)}\u00a0m/s`);
-    set('windy', `${fmt(r.windy * 100)}\u00a0%<span class="bar w" style="width:${Math.max(2, r.windy * 100)}%"></span>`);
-    set('cover', r.cover === null ? '…' : `${fmt(r.cover * 100)}\u00a0%`);
+    set('windy', `${pct(r.windy)}<span class="bar w" style="width:${Math.max(2, r.windy * 100)}%"></span>`);
+    set('cover', r.cover === null ? '…' : pct(r.cover));
   }
 }
 
@@ -127,8 +145,8 @@ function renderCorners() {
     $(`[data-c="${key}.corner"]`).textContent = `${fmt(r.corner, 1)}\u00a0m/s`;
     $(`[data-c="${key}.rest"]`).textContent = `${fmt(r.rest, 1)}\u00a0m/s`;
     $(`[data-c="${key}.hole"]`).textContent = r.hole === null ? 'n/a' : `${fmt(r.hole * 100)}\u00a0%`;
-    $(`[data-c="${key}.wetCorner"]`).textContent = state.rain <= 0 ? '0 %' : r.wetCorner === null ? '…' : `${fmt(r.wetCorner * 100)}\u00a0%`;
-    $(`[data-c="${key}.wetRest"]`).textContent = state.rain <= 0 ? '0 %' : r.wetRest === null ? '…' : `${fmt(r.wetRest * 100)}\u00a0%`;
+    $(`[data-c="${key}.wetCorner"]`).textContent = state.rain <= 0 ? '0 %' : r.wetCorner === null ? '…' : pct(r.wetCorner);
+    $(`[data-c="${key}.wetRest"]`).textContent = state.rain <= 0 ? '0 %' : r.wetRest === null ? '…' : pct(r.wetRest);
   }
   const el = $('#corner-answer');
   if (!t || !f) { el.textContent = 'Računam strujanje zraka oko oba stadiona…'; return; }
@@ -143,10 +161,10 @@ function renderCorners() {
     : `U kutovima puše i više nego danas, kad ondje puše ${fmt(t.corner, 1)}\u00a0m/s.`;
   const exposed = f.coverCorner === null ? null : 1 - f.coverCorner;
   const roofNote = exposed === null ? ''
-    : exposed >= 0.005 ? ` Krovovi ne pokrivaju ${fmt(exposed * 100)}\u00a0% kutnih sjedala.`
+    : exposed >= 0.005 ? ` Krovovi ne pokrivaju ${pct(exposed)} kutnih sjedala.`
     : ' Krovovi pokrivaju sva kutna sjedala, pa do njih kiša stiže samo ukoso.';
   const rainNote = state.rain > 0 && f.wetCorner !== null
-    ? ` Na kiši je ${fmt(f.wetCorner * 100)}\u00a0% gledatelja u kutnim sektorima i ${fmt(f.wetRest * 100)}\u00a0% na ostalim sjedalima.${roofNote}`
+    ? ` Na kiši je ${pct(f.wetCorner)} gledatelja u kutnim sektorima i ${pct(f.wetRest)} na ostalim sjedalima.${roofNote}`
     : '';
   el.textContent = `${verdict} Uz ${fmt(state.wind, 1)}\u00a0m/s ${d.text} kutovi imaju ${fmt(f.corner, 1)}\u00a0m/s, ostala sjedala ${fmt(f.rest, 1)}\u00a0m/s${hole}. ${vsToday}${rainNote}`;
 }
@@ -226,9 +244,13 @@ function describeWeather() {
   $('.dial-arrow').setAttribute('transform', `rotate(${state.from})`);
   $('#rain-out').textContent = state.rain > 0 ? `${fmt(state.rain, 1)} mm/h` : 'bez kiše';
   if (state.rain <= 0) { $('#rain-hint').textContent = 'Suho. Vjetar na sjedalima vidiš kad pod Prikazom odabereš Vjetar.'; return; }
-  const kind = state.rain < 2.5 ? 'Slaba kiša' : state.rain < 7.6 ? 'Umjerena kiša' : state.rain < 50 ? 'Jaka kiša' : 'Provala oblaka';
-  const vt = fallSpeed(state.rain), ang = Math.atan2(state.wind * ROOF_WIND, vt) / DEG;
-  $('#rain-hint').textContent = `${kind}. Kapi padaju ${fmt(vt, 1)}\u00a0m/s, a iznad krovova ih vjetar nosi pod kutem od ${fmt(ang)}° od okomice.`;
+  // Classes of the rain rate after WMO: light below 2.5 mm/h, moderate to 10, heavy to 50, violent above.
+  const kind = state.rain < 2.5 ? 'Slaba kiša' : state.rain < 10 ? 'Umjerena kiša' : state.rain < 50 ? 'Jaka kiša' : 'Vrlo jaka kiša';
+  // The smallest and the largest of the five classes of drops.
+  const drops = rainDrops(state.rain), a = drops[0], b = drops[drops.length - 1], u = state.wind * ROOF_WIND;
+  const ang = (c) => fmt(Math.atan2(u, c.vt) / DEG);
+  $('#rain-hint').textContent = `${kind}. Kapi od ${fmt(a.d, 1)} do ${fmt(b.d, 1)}\u00a0mm padaju ${fmt(a.vt, 1)} do ${fmt(b.vt, 1)}\u00a0m/s`
+    + (state.wind < 0.3 ? ', okomito.' : `, a iznad krovova ih vjetar nosi pod kutem od ${ang(b)}° do ${ang(a)}° od okomice.`);
 }
 
 function syncInputs() {
@@ -320,6 +342,7 @@ function bindUI() {
     if (!jobs.length) { $('#sweep').disabled = false; renderSweep(); }
   });
   $('#cell-size').textContent = String(TUNNEL.dx);
+  $('#spin-size').textContent = String(SPINUP.dx);
   if (!LBM.ok) {
     $('#sweep').hidden = true;
     $('#slice-field').hidden = true;
@@ -449,7 +472,7 @@ function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   timeUniform.value += REDUCED_MOTION ? 0 : dt;
   if (weatherDirty) applyWeather();
-  if (aero) aero.tick(dt);
+  if (aero) aero.tick();
 
   if (tween) {
     tween.t = Math.min(1, tween.t + dt / 1.3);

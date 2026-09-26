@@ -117,7 +117,7 @@
           <tr><th scope="row">Na kiši na ostalim sjedalima</th><td data-c="today.wetRest">…</td><td data-c="future.wetRest">…</td></tr>
         </tbody>
       </table>
-      <p class="hint">Kutni sektori su sjedala dijagonalno iza kutne zastavice: izvan produžetka uzdužne linije terena i izvan produžetka gol-linije. Danas su otvoreni jugozapadni i jugoistočni kut, a na novom stadionu sva četiri.</p>
+      <p class="hint">Kutni sektori su sjedala dijagonalno iza kutne zastavice: izvan produžetka uzdužne linije terena i izvan produžetka gol-linije. Danas su otvoreni jugozapadni i jugoistočni kut, a na novom stadionu sva četiri. Pod krovovima novog stadiona srednje strujanje gotovo stoji, pa se na tim sjedalima, u kutovima kao i drugdje, osjećaju uglavnom udari vjetra.</p>
       <p class="hint" id="fallback-note" hidden>Ovaj preglednik ne može pokrenuti simulaciju strujanja, pa su brojke procjena iz praćenja zraka.</p>
       <button type="button" class="action" id="sweep">Provjeri svih 8 smjerova vjetra</button>
       <div class="sweep" id="sweep-box" hidden>
@@ -174,7 +174,7 @@
     </section>
 
     <footer class="notes">
-      <p>Vjetar računa 3D simulacija strujanja zraka (Lattice-Boltzmann s modelom turbulencije, ćelije od <span id="cell-size">5</span> m) oko svakog stadiona za odabrani smjer. Jačina vjetra samo skalira rezultat. Kapi pratimo unatrag od glave svakog gledatelja kroz to polje, a brzina padanja ovisi o jačini kiše. Okolne zgrade i park nisu u simulaciji. Model je grub i služi za usporedbu, ne za projektiranje.</p>
+      <p>Vjetar računa 3D simulacija strujanja zraka (Lattice-Boltzmann s modelom turbulencije) oko svakog stadiona za odabrani smjer: strujanje se najprije smiri na mreži od <span id="spin-size">10</span> m, a onda na ćelijama od <span id="cell-size">5</span> m. Jačina vjetra samo skalira rezultat. Udari vjetra, kojih u simulaciji nema, dodani su kao petina slobodnog vjetra, i na sjedalima i za kapi kiše. Kapi pet veličina, kakve donosi kiša te jačine, pratimo unatrag od glave svakog gledatelja kroz to strujanje, a svaka za vjetrom kasni prema svojoj tromosti. Okolne zgrade i park nisu u simulaciji. Model je grub i služi za usporedbu, ne za projektiranje.</p>
       <p>Okolina i tlocrti današnjih tribina: © suradnici <a href="https://www.openstreetmap.org/copyright">OpenStreetMapa</a>. Novi stadion prema <a href="https://stadion-maksimir.zagreb.hr/hr/rezultati-natjecaja-128/128">plakatima prve nagrade</a>, današnji prema <a href="https://geniusandgerry.com/products/stadion-maksimir-zagreb-croatia-3d-model">modelu Genius &amp; Gerry</a> i fotografijama.</p>
     </footer>
   </aside>

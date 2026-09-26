@@ -176,8 +176,20 @@ class VoxelModel {
     const { x0, z0, h, nx, ny, nz, thick, thin } = this;
     const fi = (x - x0) / h, fk = y / h, fj = (z - z0) / h, r = size / 2 / h;
     if (fi + r <= 0 || fj + r <= 0 || fk + r <= 0 || fi - r >= nx || fj - r >= nz || fk - r >= ny) return 0;
-    const ci = Math.floor(fi), cj = Math.floor(fj), ck = Math.floor(fk);
-    let best = ci >= 0 && cj >= 0 && ck >= 0 && ci < nx && cj < nz && ck < ny ? thick[(ck * nz + cj) * nx + ci] : 0;
+    // Blocks at the centre: solid where the voxels around it, weighted by nearness, are solid by half or more,
+    // so a grid whose centres fall on voxel corners doesn't shift the blocks toward +x, +y, +z.
+    const gi = fi - 0.5, gj = fj - 0.5, gk = fk - 0.5, bi = Math.floor(gi), bj = Math.floor(gj), bk = Math.floor(gk);
+    const ti = gi - bi, tj = gj - bj, tk = gk - bk;
+    let occ = 0, val = 0;
+    for (let c = 0; c < 8; c++) {
+      const i = bi + (c & 1), j = bj + ((c >> 1) & 1), k = bk + (c >> 2);
+      if (i < 0 || j < 0 || k < 0 || i >= nx || j >= nz || k >= ny) continue;
+      const t = thick[(k * nz + j) * nx + i];
+      if (!t) continue;
+      occ += (c & 1 ? ti : 1 - ti) * ((c >> 1) & 1 ? tj : 1 - tj) * (c >> 2 ? tk : 1 - tk);
+      if (t > val) val = t;
+    }
+    let best = occ >= 0.5 - 1e-9 ? val : 0;
     const i0 = Math.max(0, Math.floor(fi - r)), i1 = Math.min(nx - 1, Math.ceil(fi + r) - 1);
     const j0 = Math.max(0, Math.floor(fj - r)), j1 = Math.min(nz - 1, Math.ceil(fj + r) - 1);
     const k0 = Math.max(0, Math.floor(fk - r)), k1 = Math.min(ny - 1, Math.ceil(fk + r) - 1);
@@ -640,6 +652,10 @@ const SIM_PARTS = {
 };
 const ROOF_PARTS = ['roof', 'roof_light', 'roof_soffit', 'roof_edge', 'truss', 'steel', 'lamp'];
 const GROUND_PARTS = ['plaza', 'plaza_b', 'hardstand', 'turf_dark', 'turf_light', 'turf_edge', 'field_line', 'board', 'net'];
+// Drawn in the page's palette: the dark concourse glazing and its frames like the facade, the checkered plaza
+// with the paving of today's site.
+const FACADE_LOOK = ['glass_dark', 'mullion'];
+const PAVED = ['plaza', 'plaza_b'];
 const TREAD = 0.44;   // the model's seat pans stand 0.44 m above the tread
 
 // The file is gzipped: "MKS1", a u32 header length, a JSON header padded to 4 bytes, then the blocks the header
@@ -668,15 +684,17 @@ async function buildFuture() {
   const { parts, rows } = await loadFutureModel();
   const st = new Stadium('future', { center: FUTURE_CENTER, capacity: 35000, name: 'Novi', bowl: 38 });
 
-  for (const [name, { pos, index, material: m }] of Object.entries(parts)) {
+  for (const [name, { pos, index, material }] of Object.entries(parts)) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.setIndex(new THREE.BufferAttribute(index, 1));
-    const mat = new THREE.MeshStandardMaterial({
+    const m = FACADE_LOOK.includes(name) ? parts.facade.material : material;
+    const mat = PAVED.includes(name) ? M.paving : new THREE.MeshStandardMaterial({
       color: m.color, metalness: m.metalness, roughness: m.roughness, flatShading: true,
       side: m.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
       transparent: m.blend, opacity: m.blend ? m.opacity : 1, depthWrite: !m.blend,
     });
+    if (mat === M.paving) g.computeVertexNormals();
     const ground = GROUND_PARTS.includes(name);
     st.mesh(g, mat, { cast: !ground && !m.blend, occluder: !ground });
     if (ROOF_PARTS.includes(name)) st.roofMaterials.push(mat);

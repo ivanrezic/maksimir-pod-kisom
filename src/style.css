@@ -175,6 +175,9 @@ body {
   font-variation-settings: "wdth" 112;
 }
 .view-stats dd.sub { font-size: 11.5px; color: var(--scene-card-ink-2); }
+/* Numbers from the last wind direction while the tunnel computes the new one. */
+.view-stats dd, .compare td { transition: opacity 0.25s; }
+.view-stats.stale dd, .compare td.stale { opacity: 0.45; }
 
 .labels { position: absolute; inset: 0; }
 

@@ -1,10 +1,28 @@
 // ------------------------------------------------------------------ weather physics
-// Median drop diameter from rain rate (Marshall-Palmer) and terminal fall speed (Atlas et al.).
-function fallSpeed(rate) {
-  const d0 = 0.89 * Math.pow(Math.max(rate, 0.1), 0.21);
-  return 9.65 - 10.3 * Math.exp(-0.6 * d0);
+// Terminal fall speed of a raindrop of diameter d mm (Atlas et al. 1973).
+const dropSpeed = (d) => Math.max(0.1, 9.65 - 10.3 * Math.exp(-0.6 * d));
+
+// Drop sizes after Best (1950): drops smaller than d mm hold 1 - exp(-(d/a)^2.25) of the water in the air,
+// a = 1.3 R^0.232. Weighted by their fall speed, that becomes the share of the rain they bring down. The
+// rain is split into five classes that bring down a fifth each; each class falls at its middle drop's speed.
+const DROP_CLASSES = 5;
+function rainDrops(rate) {
+  const a = 1.3 * Math.pow(Math.max(rate, 0.1), 0.232), dd = 0.01, cdf = [];
+  let acc = 0;
+  for (let d = dd / 2; d < 10; d += dd) {
+    acc += 2.25 / a * Math.pow(d / a, 1.25) * Math.exp(-Math.pow(d / a, 2.25)) * dropSpeed(d) * dd;
+    cdf.push([d, acc]);
+  }
+  const out = [];
+  for (let k = 0, i = 0; k < DROP_CLASSES; k++) {
+    while (cdf[i][1] < ((k + 0.5) / DROP_CLASSES) * acc) i++;
+    out.push({ d: cdf[i][0], vt: dropSpeed(cdf[i][0]) });
+  }
+  return out;
 }
-const ROOF_WIND = Math.pow(25 / 10, 0.22);          // wind at roof height relative to the 10 m reading
+// The middle class: half the rain falls in larger drops, half in smaller ones.
+const fallSpeed = (rate) => rainDrops(rate)[DROP_CLASSES >> 1].vt;
+const ROOF_WIND = Math.pow(40 / 10, 0.22);          // wind at the new roofs, 40 m up, relative to the 10 m reading
 const heightFactor = (y) => Math.pow(Math.max(y, 3) / 10, 0.22);
 
 function beaufort(v) {
@@ -27,12 +45,13 @@ function dirName(deg) {
   return { short: DIRS[i][0], text: `${prep} ${from}` };
 }
 
-// Gusts and veering: five drop paths per spectator, each with its own wind at roof height.
-function rainRays(p) {
+// Gusts and veering: five drop paths per spectator, each with its own wind above the bowl (at height `top`)
+// and its own class of drop, paired so that the mean drift over the five is that of every gust with every size.
+function rainRays(p, top) {
   if (p.rain <= 0) return [];
-  const vt = fallSpeed(p.rain);
-  const jitter = [[1, 0, 0.3], [0.7, -9, 0.175], [1.3, 9, 0.175], [0.85, 14, 0.175], [1.15, -14, 0.175]];
-  return jitter.map(([g, d, w]) => ({ sx: Math.sin((p.from + d) * DEG), sz: -Math.cos((p.from + d) * DEG), u: p.wind * ROOF_WIND * g, vt, w }));
+  const drops = rainDrops(p.rain), u = p.wind * heightFactor(top);
+  const jitter = [[1, 0, 2], [0.7, -9, 1], [1.3, 9, 3], [0.85, 14, 4], [1.15, -14, 0]];
+  return jitter.map(([g, d, c]) => ({ sx: Math.sin((p.from + d) * DEG), sz: -Math.cos((p.from + d) * DEG), u: u * g, vt: drops[c].vt, w: 1 / jitter.length }));
 }
 
 // Local wind relative to the 10 m reading: shelter toward the wind and enclosure all around.
@@ -54,8 +73,8 @@ function workerMain() {
   // Transmission along one ray. mode 0: rain, each surface lets rainPass through.
   // mode 1: wind shelter, each hit weighted by how tall the surface is where the ray meets it.
   // mode 2: enclosure, any wind-blocking surface counts at full strength.
-  function cast(ox, oy, oz, rx, ry, rz, mode, maxT) {
-    if (grid) return castGrid(ox, oy, oz, rx, ry, rz, mode, maxT);
+  function cast(ox, oy, oz, rx, ry, rz, mode, maxT, t0 = 2.4) {
+    if (grid) return castGrid(ox, oy, oz, rx, ry, rz, mode, maxT, t0);
     let trans = 1;
     for (let k = 0; k < nOcc; k++) {
       const b = k * 19;
@@ -82,13 +101,14 @@ function workerMain() {
     return trans;
   }
   // A stadium built from voxels is marched through its 2 m grid in its own frame (every ray here climbs).
-  // Each run of solid cells counts as one surface, closed or perforated metal, like one polygon above.
-  // The first 2.4 m are skipped: the cell around a head often holds the rows behind it.
-  function castGrid(ox, oy, oz, rx, ry, rz, mode, maxT) {
+  // Each run of solid cells counts as one surface, closed or perforated metal, like one polygon above;
+  // perforated metal lets its open share of the rain through. A ray from a head skips its first 2.4 m
+  // (t0): the cell around a head often holds the rows behind it.
+  function castGrid(ox, oy, oz, rx, ry, rz, mode, maxT, t0) {
     const { mask, g, cos, sin } = grid;
     const lx = rx * cos - rz * sin, lz = rx * sin + rz * cos;
     let trans = 1, inside = false;
-    for (let t = 2.4; t < maxT; t += g.dx / 2) {
+    for (let t = t0; t < maxT; t += g.dx / 2) {
       const x = ox + lx * t, y = oy + ry * t, z = oz + lz * t;
       if (y >= g.top) break;
       const i = Math.floor((x - g.x0) / g.dx), j = Math.floor((z - g.z0) / g.dx), k = Math.floor(y / g.dx);
@@ -97,7 +117,7 @@ function workerMain() {
       if (!m) { inside = false; continue; }
       if (inside) continue;
       inside = true;
-      const pass = m >= 250 ? 0 : mode === 0 ? 0.25 : 0.45;
+      const pass = m >= 250 ? 0 : mode === 0 ? 1 - m / 255 : 0.45;
       if (mode === 0) { trans *= pass; if (trans < 0.02) return 0; }
       else if (mode === 2) trans *= pass;
       else trans *= 1 - (1 - pass) * Math.exp(-t / (8 * Math.max(y, 4)));
@@ -133,7 +153,7 @@ function workerMain() {
         if (t > 0.02) {
           const qx = ox + ax * tA, qy = oy + ay * tA, qz = oz + az * tA;
           L = Math.hypot(r.u, r.vt);
-          t *= cast(qx, qy, qz, (r.sx * r.u) / L, r.vt / L, (r.sz * r.u) / L, 0, 500);
+          t *= cast(qx, qy, qz, (r.sx * r.u) / L, r.vt / L, (r.sz * r.u) / L, 0, 500, 0);
         }
         acc += r.w * t;
       }
@@ -178,6 +198,6 @@ class Sim {
     if (this.busy) { this.pending = p; return; }
     this.busy = true;
     this.params = { ...p };
-    this.worker.postMessage({ type: 'run', id: ++this.seq, windKey: Math.round(p.from), windRays: windRays(p), rainRays: rainRays(p) });
+    this.worker.postMessage({ type: 'run', id: ++this.seq, windKey: Math.round(p.from), windRays: windRays(p), rainRays: rainRays(p, this.st.bowl) });
   }
 }
