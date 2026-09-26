@@ -22,7 +22,27 @@ const LBM = (() => {
   const drawBuffers = gl.getParameter(gl.MAX_DRAW_BUFFERS);
   const info = gl.getExtension('WEBGL_debug_renderer_info');
   const gpu = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
-  return { ok: floatTargets && drawBuffers >= 4, q: drawBuffers >= 5 ? 19 : 15, software: /SwiftShader|llvmpipe|software/i.test(gpu) };
+  // A GPU may also refuse that many float targets at once: phones before the iPhone 12 hold at most 64 bytes
+  // per pixel across them, and D3Q19 writes 80. So draw a pixel into n targets and read the last one back.
+  const works = (n) => {
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType, count: n, depthBuffer: false });
+    const mat = new THREE.RawShaderMaterial({
+      glslVersion: THREE.GLSL3, vertexShader: 'in vec3 position;\nvoid main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `precision highp float;\n${Array.from({ length: n }, (_, k) => `layout(location = ${k}) out vec4 o${k};`).join('\n')}\nvoid main() { ${Array.from({ length: n }, (_, k) => `o${k} = vec4(${k}.5);`).join(' ')} }`,
+    });
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat), px = new Float32Array(4);
+    quad.frustumCulled = false;
+    renderer.setRenderTarget(rt);
+    renderer.render(quad, new THREE.Camera());
+    gl.readBuffer(gl.COLOR_ATTACHMENT0 + n - 1);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, px);
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    renderer.setRenderTarget(null);
+    rt.dispose(); mat.dispose(); quad.geometry.dispose();
+    return px[0] === n - 0.5;
+  };
+  const q = !floatTargets ? 0 : drawBuffers >= 5 && works(5) ? 19 : drawBuffers >= 4 && works(4) ? 15 : 0;
+  return { ok: q > 0, q, software: /SwiftShader|llvmpipe|software/i.test(gpu) };
 })();
 
 // A grid over the tunnel's box. Step counts are given for 5 m cells: at a fixed lattice speed of the wind a
