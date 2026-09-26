@@ -15,6 +15,10 @@
         <header class="view-head">
           <h2>Danas</h2>
           <p>Stadion Maksimir u punom kapacitetu, 35.123 sjedala. Nijedna tribina nema krov.</p>
+          <div class="view-busy" data-for="today" hidden>
+            <span class="view-busy-text" role="status"></span><span class="view-busy-pct" aria-hidden="true"></span>
+            <span class="view-bar" role="progressbar" aria-label="Izračun vjetra i kiše" aria-valuemin="0" aria-valuemax="100"><i></i></span>
+          </div>
         </header>
         <dl class="view-stats" data-for="today">
           <div><dt>Na kiši</dt><dd data-k="wet">&nbsp;</dd><dd class="sub" data-k="wetAbs">&nbsp;</dd></div>
@@ -26,6 +30,10 @@
         <header class="view-head">
           <h2>Novi Maksimir</h2>
           <p>Pobjedničko rješenje VG13 Architects, 35.000 sjedala. Krovovi pokrivaju tribine, a sva četiri kuta ostaju otvorena.</p>
+          <div class="view-busy" data-for="future" hidden>
+            <span class="view-busy-text" role="status"></span><span class="view-busy-pct" aria-hidden="true"></span>
+            <span class="view-bar" role="progressbar" aria-label="Izračun vjetra i kiše" aria-valuemin="0" aria-valuemax="100"><i></i></span>
+          </div>
         </header>
         <dl class="view-stats" data-for="future">
           <div><dt>Na kiši</dt><dd data-k="wet">&nbsp;</dd><dd class="sub" data-k="wetAbs">&nbsp;</dd></div>
@@ -174,7 +182,7 @@
     </section>
 
     <footer class="notes">
-      <p>Vjetar računa 3D simulacija strujanja zraka (Lattice-Boltzmann s modelom turbulencije) oko svakog stadiona za odabrani smjer: strujanje se najprije smiri na mreži od <span id="spin-size">10</span> m, a onda na ćelijama od <span id="cell-size">5</span> m. Jačina vjetra samo skalira rezultat. Udari vjetra, kojih u simulaciji nema, dodani su kao petina slobodnog vjetra, i na sjedalima i za kapi kiše. Kapi pet veličina, kakve donosi kiša te jačine, pratimo unatrag od glave svakog gledatelja kroz to strujanje, a svaka za vjetrom kasni prema svojoj tromosti. Okolne zgrade i park nisu u simulaciji. Model je grub i služi za usporedbu, ne za projektiranje.</p>
+      <p>Vjetar računa 3D simulacija strujanja zraka (Lattice-Boltzmann s modelom turbulencije) oko svakog stadiona za odabrani smjer: strujanje se najprije smiri na mreži od <span id="spin-size">10</span> m, a onda na ćelijama od <span id="cell-size">5</span> m. Jačina vjetra samo skalira rezultat. Udari vjetra, kojih u simulaciji nema, dodani su kao petina slobodnog vjetra, i na sjedalima i za kapi kiše. Udar nosi kap samo dok ona pada kroz njegov vrtlog od desetak metara, a vrtlozi iznad nje guraju je svaki na svoju stranu. Kapi pet veličina, kakve donosi kiša te jačine, pratimo unatrag od glave svakog gledatelja kroz to strujanje, a svaka za vjetrom kasni prema svojoj tromosti. Okolne zgrade i park nisu u simulaciji. Model je grub i služi za usporedbu, ne za projektiranje.</p>
       <p>Okolina i tlocrti današnjih tribina: © suradnici <a href="https://www.openstreetmap.org/copyright">OpenStreetMapa</a>. Novi stadion prema <a href="https://stadion-maksimir.zagreb.hr/hr/rezultati-natjecaja-128/128">plakatima prve nagrade</a>, današnji prema <a href="https://geniusandgerry.com/products/stadion-maksimir-zagreb-croatia-3d-model">modelu Genius &amp; Gerry</a> i fotografijama.</p>
     </footer>
   </aside>

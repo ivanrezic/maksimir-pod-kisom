@@ -4,10 +4,12 @@ Današnji stadion Maksimir i pobjednik arhitektonskog natječaja iz 2026. u 3D, 
 
 **Stranica:** https://ivanrezic.github.io/maksimir-pod-kisom/
 
+> **Napomena:** projekt je u potpunosti napravljen pomoću AI-ja, pa je moguće da nešto nije potpuno realistično. Ipak, vjerujem da dobro dočarava razliku između dva stadiona.
+
 ## Kako radi
 
 - Vjetar oko svakog stadiona računa 3D simulacija strujanja zraka na grafičkoj kartici (Lattice-Boltzmann D3Q19 sa Smagorinskyjevim modelom turbulencije). Strujanje se najprije smiri na mreži od 10 m, a onda na ćelijama od 5 m. Preglednik bez podrške za float teksture dobiva jednostavniju procjenu praćenjem zraka.
-- Udari vjetra, kojih u simulaciji nema, dodani su kao petina slobodnog vjetra, i na sjedalima i za kapi kiše.
+- Udari vjetra, kojih u simulaciji nema, dodani su kao petina slobodnog vjetra, i na sjedalima i za kapi kiše. Udar nosi kap samo dok ona pada kroz njegov vrtlog od desetak metara, a vrtlozi iznad nje guraju je svaki na svoju stranu.
 - Kapi kiše prate se unatrag od glave svakog gledatelja kroz simulirano polje: pet veličina kapi po Bestovoj raspodjeli za zadanu jačinu kiše, svaka sa svojom brzinom padanja (Atlas i sur. 1973) i tromošću.
 - Okolne zgrade i park nisu u simulaciji. Model je grub i služi za usporedbu, ne za projektiranje.
 

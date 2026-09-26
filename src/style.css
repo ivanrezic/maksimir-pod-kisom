@@ -145,6 +145,34 @@ body {
   color: var(--scene-card-ink-2);
 }
 
+/* What the view's numbers still wait for: the wind from the tunnel, their turn, or the rain. The bar runs
+   along the card's bottom edge. */
+.view-busy {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 9px;
+  padding-bottom: 3px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+.view-busy-pct { flex: none; font-weight: 750; font-variant-numeric: tabular-nums; }
+.view-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 0 0 3px 3px;
+  background: color-mix(in srgb, var(--scene-card-ink) 14%, transparent);
+}
+.view-bar i { display: block; width: 0; height: 100%; background: var(--modri); }
+.view-bar.wait i { width: 32%; animation: view-bar 1.4s ease-in-out infinite; }
+@keyframes view-bar { from { transform: translateX(-100%); } to { transform: translateX(320%); } }
+
 .view-stats {
   position: absolute;
   left: 14px;
@@ -431,6 +459,7 @@ details summary { font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
   .views { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
   .view + .view { box-shadow: 0 -2px 0 var(--paper); }
   .view-head { top: 10px; left: 10px; padding: 7px 10px 8px; }
+  .view-busy { margin-top: 5px; padding-bottom: 4px; font-size: 12px; }
   .view-head h2 { font-size: 18px; }
   .view-head p { display: none; }
   .view-stats { left: 10px; bottom: 10px; }
@@ -442,4 +471,5 @@ details summary { font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
+  .view-bar.wait i { width: 100%; opacity: 0.35; animation: none; }
 }

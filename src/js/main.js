@@ -121,8 +121,8 @@ function renderStats() {
       $('[data-k="windy"]', box).textContent = ' ';
       continue;
     }
-    // Numbers still from the last wind direction while the tunnel works on the new one.
-    const stale = !!st.field && st.field.from !== state.from;
+    // Numbers still from the last wind direction while the tunnel works on the new one, or the rain on its wind.
+    const stale = !!st.field && (st.field.from !== state.from || (state.rain > 0 && st.wetFrom !== st.field.from));
     box.classList.toggle('stale', stale);
     for (const c of document.querySelectorAll(`[data-c^="${st.key}."]`)) c.classList.toggle('stale', stale);
     const rainOn = state.rain > 0, wetKnown = r.wetShare !== null;
@@ -218,7 +218,37 @@ function renderSweep() {
   }
 }
 
+// On each view, under its title: what its numbers still wait for. The wind from the tunnel, with the run's progress;
+// their turn, while the tunnel works on the other stadium; or the rain, traced through the new wind.
+const tunnel = { job: null, prog: 0 };
+function renderBusy() {
+  const job = aero && aero.current;
+  for (const st of STADIUMS) {
+    const box = $(`.view-busy[data-for="${st.key}"]`), bar = $('.view-bar', box);
+    const rs = rainSims ? rainSims.get(st) : sims[STADIUMS.indexOf(st)];
+    let text = null, prog = null, wait = false;
+    if (job && job.st === st && job.kind === 'view') { text = `Računam vjetar ${dirName(job.from).text}`; prog = tunnel.job === job ? tunnel.prog : 0; }
+    else if (aero && aero.reading.has(aero.key(st, state.from))) { text = `Računam vjetar ${dirName(state.from).text}`; prog = 1; }
+    else if (aero && (!st.field || st.field.from !== state.from)) {
+      if (!job) { text = `Računam vjetar ${dirName(state.from).text}`; prog = 0; }
+      else text = job.st !== st ? `Na redu nakon ${job.st.key === 'today' ? 'današnjeg' : 'novog'} stadiona` : 'Čeka na red';
+    } else if (state.rain > 0 && rs.busy) { text = 'Računam kišu'; wait = true; }
+    box.hidden = !text;
+    if (!text) continue;
+    const label = $('.view-busy-text', box);
+    if (label.textContent !== text) label.textContent = text;
+    $('.view-busy-pct', box).textContent = prog === null ? '' : `${fmt(prog * 100)}\u00a0%`;
+    bar.classList.toggle('wait', wait);
+    $('i', bar).style.width = wait ? '' : `${(prog || 0) * 100}%`;
+    if (wait) bar.removeAttribute('aria-valuenow');
+    else bar.setAttribute('aria-valuenow', String(Math.round((prog || 0) * 100)));
+  }
+}
+
 function renderProgress(job, prog, queue) {
+  tunnel.job = job;
+  tunnel.prog = prog;
+  renderBusy();
   const el = $('#busy');
   if (!job) {
     el.hidden = true;
@@ -378,11 +408,14 @@ function onField(st, field, kind) {
   rs.run(state);
   updateResults(st);
   renderSweep();
+  renderBusy();
 }
-function onRain(st, data) {
+function onRain(st, data, from) {
   st.wet = data.wet;
   st.cover = data.cover;
+  st.wetFrom = from;
   updateResults(st);
+  renderBusy();
 }
 function onHeuristic(st, r, p) {
   const n = st.seats.length;
@@ -396,6 +429,7 @@ function onHeuristic(st, r, p) {
   st.wet = r.wet;
   st.cover = r.cover;
   updateResults(st);
+  renderBusy();
 }
 if (LBM.ok) {
   aero = new Aero(onField, renderProgress);
@@ -447,6 +481,7 @@ function applyWeather() {
   } else {
     for (const s of sims) s.run({ wind: state.wind, from: state.from, rain: state.rain });
   }
+  renderBusy();
   rainVel = updateRainMaps(state, STADIUMS);
   const k = clamp(state.rain / 25, 0, 1);
   const top = SKY.dryTop.clone().lerp(SKY.wetTop, k), hor = SKY.dryHorizon.clone().lerp(SKY.wetHorizon, k);

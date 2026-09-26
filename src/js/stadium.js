@@ -519,25 +519,6 @@ function pitch(st, { apron }) {
   goals(st, 52.5);
 }
 
-function signBoard(st, text, [x, y, z], w, h, bg, fg) {
-  const tex = canvasTex(w * 32, h * 32, (g, cw, ch) => {
-    g.fillStyle = bg;
-    g.fillRect(0, 0, cw, ch);
-    g.fillStyle = fg;
-    g.font = `italic 700 ${Math.round(ch * 0.46)}px Georgia, "Times New Roman", serif`;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText(text, cw / 2, ch / 2);
-  });
-  const board = st.mesh(new THREE.BoxGeometry(w, h, 0.4), [M.steel, M.steel, M.steel, M.steel, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }), M.steel], { occluder: false });
-  board.position.set(x, y, z);
-  board.rotation.y = Math.atan2(-x, -z);
-  for (const d of [-w / 3, w / 3]) {
-    const post = st.mesh(new THREE.BoxGeometry(0.4, y - h / 2, 0.4), M.steel, { occluder: false });
-    post.position.set(x + Math.cos(board.rotation.y) * d, (y - h / 2) / 2, z - Math.sin(board.rotation.y) * d);
-  }
-}
-
 // ------------------------------------------------------------------ today
 // Stadion Maksimir in its full 35,123-seat layout: four open stands, none of them roofed.
 const DINAMO_BLUE = '#2349b3';
@@ -555,12 +536,11 @@ function buildToday() {
   const sg = new THREE.ShapeGeometry(site); sg.rotateX(-Math.PI / 2); sg.translate(0, 0.27, 0);
   st.mesh(sg, M.paving, { cast: false, occluder: false });
 
-  // Zapad (west): lower ring, VIP glass band with the pink sponsor fascia, then the upper tier
+  // Zapad (west): lower ring, VIP glass band, then the upper tier
   // carried on rows of massive pillars with the concourse underneath.
   st.stand({ name: 'zapad', inner: [[-50.5, 56], [-50.5, -64]], outer: [[-63, 56], [-63, -64]], occupied: true,
     tiers: [{ f0: 0, f1: 1, rows: 15, y0: 0.9, y1: 6.9 }], look: LOOK_TODAY });
   st.box(-67, -63, 6.9, 10.2, -64, 64, M.glassWarm);
-  st.box(-67.5, -67, 9.4, 11.0, -60, 60, M.magenta, { occ: false });
   st.stand({ name: 'zapad', inner: [[-67, 64], [-67, -64]], outer: [[-93, 64], [-93, -64]], occupied: true,
     tiers: [{ f0: 0, f1: 1, rows: 30, y0: 11.0, y1: 27.2, base0: 10.2, base1: 10.2 }],
     look: { ...LOOK_TODAY, ...LETTERS(64, 7, 16) }, label: 'Zapad', labelAt: [-84, 36, 0] });
@@ -621,7 +601,6 @@ function buildToday() {
   const board = new THREE.BoxGeometry(15, 5.5, 0.8).translate(0, 19.5, 121.5);
   st.mesh(board, new THREE.MeshStandardMaterial({ color: '#1b1f24', roughness: 0.4, emissive: '#ffcf6b', emissiveIntensity: 0.08 }), { occluder: false });
   for (const x of [-5, 5]) st.box(x - 0.3, x + 0.3, 14, 17, 121.2, 121.8, M.steel, { occ: false });
-  signBoard(st, 'Večernji list', [-46, 18.5, 108], 13, 4.2, '#d7263d', '#ffffff');
 
   // Corner blocks from OSM: ochre offices in the north-west, glass cylinder in the north-east.
   st.extrude([[-55.8, -121.9], [-96.1, -121.7], [-95.6, -65.8], [-62.5, -66.0], [-62.5, -60.4], [-55.2, -60.5], [-55.3, -64.1], [-55.4, -83.0]], 21, M.ochre);

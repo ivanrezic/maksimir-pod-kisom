@@ -206,7 +206,6 @@ const M = {
   glass: new THREE.MeshStandardMaterial({ color: '#2f4e70', roughness: 0.15, metalness: 0.4 }),
   glassWarm: new THREE.MeshStandardMaterial({ color: '#3a3a36', roughness: 0.2, metalness: 0.3, emissive: '#f3d9a4', emissiveIntensity: 0.35 }),
   ochre: new THREE.MeshStandardMaterial({ color: '#c98a4b', roughness: 0.85 }),
-  magenta: new THREE.MeshStandardMaterial({ color: '#d0177d', roughness: 0.6 }),
   tartan: new THREE.MeshLambertMaterial({ color: '#566f9f' }),
   white: new THREE.MeshStandardMaterial({ color: '#f4f4f1', roughness: 0.6 }),
   steel: new THREE.MeshStandardMaterial({ color: '#9aa4ab', roughness: 0.5, metalness: 0.6 }),

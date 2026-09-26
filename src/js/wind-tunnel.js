@@ -488,14 +488,18 @@ function rainMask(st, [x0, x1, z0, z1, top]) {
 // - Drops of the five sizes of the rain (see rainDrops).
 // - Gusts: the tunnel's inlet is steady and its 5 m cells resolve little of the turbulence inside the bowl,
 //   so the gusts are added along the free wind, with a spread of GUST times the 10 m wind (turbulence of the
-//   free wind is about 0.25 of it, measured inside street canyons and bowls nearer 0.15), at three strengths.
+//   free wind is about 0.25 of it, measured inside street canyons and bowls nearer 0.15), at six strengths.
+//   A gust is one eddy, about EDDY metres across like those in the shear layer over the roofs: it carries a
+//   drop in full only while the drop falls through it, and the eddies above push it one way or the other, so
+//   together they move it as far as a random walk would, with the square root of its fall, not in step with it.
 // - A drop lags behind the wind: it takes about vt/g to pick up a change, so it still moves with the air it
 //   met that long before, further up its path, unless a roof or stand lies in between.
-const GUST = 0.2;
+const GUST = 0.2, EDDY = 10;
 function rainWorkerMain() {
   let heads, mask, g, near, field = null, wind = null, cover = null;
-  const STEP = 1.2, G = 9.81, S3 = Math.sqrt(3);
-  const GUSTS = [[-S3, 1 / 6], [0, 2 / 3], [S3, 1 / 6]];   // Gauss-Hermite points of a normal spread
+  const STEP = 1.2, G = 9.81;
+  // Six equally likely strengths of a normal spread: the mean of each sixth, scaled so the six keep its spread.
+  const GUSTS = [-1.563, -0.712, -0.221, 0.221, 0.712, 1.563].map((xi) => [xi, 1 / 6]);
   const v = new Float32Array(3);
   // The mean air velocity at a point of the stadium frame, as a fraction of the 10 m wind, interpolated
   // from the open cells around it. Where the tunnel's 5 m cells are all solid (next to a stand, which the
@@ -598,12 +602,14 @@ function rainWorkerMain() {
           const gx = dx * xi * GUST * U, gz = dz * xi * GUST * U;
           let x = heads[3 * s], y = heads[3 * s + 1], z = heads[3 * s + 2], q = cellOf(x, y, z), trans = 1, run = 0, last = -1;
           for (let it = 0; it < 400; it++) {
+            // The eddy at the head pushes in full; past it, just enough for the drift to grow as sqrt(EDDY * run).
+            const fe = run < EDDY ? 1 : 0.5 * Math.sqrt(EDDY / run);
             let ax = 0, ay = 0, az = 0;
             if (U > 0 && wind) {
               windOf(q, y);
-              ax = v[0] * U + gx; ay = v[1] * U; az = v[2] * U + gz;
+              ax = v[0] * U + gx * fe; ay = v[1] * U; az = v[2] * U + gz * fe;
               const qa = laggedCell(x, y, z, -ax, vt - ay, -az, lag, run, q);
-              if (qa !== q) { windOf(qa, ly); ax = v[0] * U + gx; ay = v[1] * U; az = v[2] * U + gz; }
+              if (qa !== q) { windOf(qa, ly); ax = v[0] * U + gx * fe; ay = v[1] * U; az = v[2] * U + gz * fe; }
             }
             // In open air, with nothing within reach, the step can be as long as the clearance.
             const step = run >= 2.4 && q >= 0 && near[q] > 3 ? Math.min(8, (near[q] - 2) * g.dx) : STEP;
@@ -634,7 +640,7 @@ function rainWorkerMain() {
     const n = heads.length / 3, wet = new Float32Array(n);
     if (!cover) cover = trace(0, [6], [[0, 1]], 0, n, new Float32Array(n));
     if (m.rain > 0) for (let s = 0; s < n; s += 2000) {
-      trace(m.U, m.drops, GUSTS, s, Math.min(n, s + 2000), wet);
+      trace(m.U, m.drops, m.U > 0 ? GUSTS : [[0, 1]], s, Math.min(n, s + 2000), wet);   // no wind, no gusts
       await new Promise((r) => setTimeout(r));
       if (id !== latest) return;
     }
@@ -647,7 +653,7 @@ function rainWorkerMain() {
     run(m, ++latest);
   };
 }
-const rainWorkerURL = URL.createObjectURL(new Blob([`const GUST = ${GUST};\n(${rainWorkerMain.toString()})()`], { type: 'text/javascript' }));
+const rainWorkerURL = URL.createObjectURL(new Blob([`const GUST = ${GUST}, EDDY = ${EDDY};\n(${rainWorkerMain.toString()})()`], { type: 'text/javascript' }));
 
 class RainSim {
   constructor(st, bounds, onResult) {
@@ -656,10 +662,14 @@ class RainSim {
     const { mask, g } = rainMask(st, bounds);
     this.worker.postMessage({ type: 'init', heads: st.headsLocal, mask, g });
     this.seq = 0;
+    this.busy = false;
+    this.from = null;      // wind direction of the field the worker holds
+    this.runFrom = null;   // and of the one the latest run traces through
     // Only the latest run answers; one overtaken on its way back is dropped.
-    this.worker.onmessage = (e) => { if (e.data.id === this.seq) onResult(this.st, e.data); };
+    this.worker.onmessage = (e) => { if (e.data.id === this.seq) { this.busy = false; onResult(this.st, e.data, this.runFrom); } };
   }
   setField(field) {
+    this.from = field.from;
     const st = this.st, f = field.frame, dx = field.dx;
     const inv = st.matrix.clone().invert(), R = new THREE.Matrix3().setFromMatrix4(inv);
     const t = new THREE.Vector3().setFromMatrixPosition(st.matrix);
@@ -676,6 +686,8 @@ class RainSim {
     this.worker.postMessage({ type: 'field', field: { nx: field.nx, ny: field.ny, nz: field.nz, data, mask: field.mask, A, V, dir: [Rex.x, Rex.y, Rex.z] } }, [data.buffer]);
   }
   run(p) {
+    this.busy = true;
+    this.runFrom = this.from;
     this.worker.postMessage({ type: 'run', id: ++this.seq, U: p.wind, drops: rainDrops(p.rain).map((c) => c.vt), rain: p.rain });
   }
 }
