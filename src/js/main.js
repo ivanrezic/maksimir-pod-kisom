@@ -30,7 +30,7 @@ function goTo(name, instant = false) {
 
 
 // ------------------------------------------------------------------ state + UI
-const state = { wind: 8, from: 225, rain: 6, mode: 'rain', xray: false, slice: false, sliceH: 12 };
+const state = { wind: 8, from: 225, rain: 0, mode: 'rain', xray: false, slice: false, sliceH: 12 };
 const PRESET_WEATHER = {
   rominjanje: { wind: 2, from: 45, rain: 1.5 },
   jugozapadnjak: { wind: 8, from: 225, rain: 6 },
