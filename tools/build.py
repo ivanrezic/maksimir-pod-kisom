@@ -12,6 +12,11 @@ SRC, DIST = ROOT / "src", ROOT / "dist"
 ORDER = ["scene.js", "stadium.js", "weather.js", "wind-tunnel.js", "visuals.js", "main.js"]
 DESCRIPTION = ("Današnji i novi stadion Maksimir u 3D, jedan uz drugi uz Park Maksimir. "
                "Simulacija vjetra i kiše pokazuje tko pokisne i puše li kroz otvore u kutovima.")
+# Visitor counts for the GitHub Pages site; only dist/index.html gets it, not the artifact body.
+ANALYTICS = ("<!-- Cloudflare Web Analytics --><script type='module' "
+             "src='https://static.cloudflareinsights.com/beacon.min.js' "
+             "data-cf-beacon='{\"token\": \"e10d3e9e8ea1433a9161a1f2740e59af\"}'></script>"
+             "<!-- End Cloudflare Web Analytics -->")
 
 
 def main():
@@ -30,7 +35,7 @@ def main():
         f'<meta name="description" content="{DESCRIPTION}">\n'
         '<meta property="og:title" content="Maksimir pod kišom">\n'
         f'<meta property="og:description" content="{DESCRIPTION}">\n'
-        + head + '\n</head>\n<body>\n<div id="app">' + app + "\n</body>\n</html>\n")
+        + head + '\n</head>\n<body>\n<div id="app">' + app + "\n" + ANALYTICS + "\n</body>\n</html>\n")
     print(f"built {len(body) / 1024:.0f} KB")
 
 
